@@ -242,6 +242,15 @@ function handleGestureResult(data) {
 
   // Update gesture display
   if (gesture && type !== 'none') {
+    // Extract language specific translation
+    let displayTranslation = translation;
+    if (translation && translation.includes(' / ')) {
+       const parts = translation.split(' / ').map(p => p.trim());
+       if (state.currentLang === 'en') displayTranslation = parts[0];
+       else if (state.currentLang === 'ru') displayTranslation = parts[1] || parts[0];
+       else if (state.currentLang === 'uz') displayTranslation = parts[2] || parts[0];
+    }
+
     // Big gesture display overlay
     $('detected-gesture').textContent = gesture;
     $('confidence-bar').style.width = (confidence * 100) + '%';
@@ -252,18 +261,18 @@ function handleGestureResult(data) {
       ? `🌀 Динамический жест (${Math.round(confidence * 100)}%)`
       : `✋ Статический знак (${Math.round(confidence * 100)}%)`;
 
-    $('result-translation').textContent = translation || gesture;
+    $('result-translation').textContent = displayTranslation || gesture;
 
     // Add to history (avoid duplicates)
     if (gesture !== state.lastGesture && gesture !== 'UNKNOWN') {
-      addToHistory(gesture, translation);
+      addToHistory(gesture, displayTranslation);
       state.lastGesture = gesture;
     }
 
     // Auto-speak dynamic gestures
-    if (type === 'dynamic' && translation && translation !== state.lastSpoken) {
-      speakText(translation, state.currentLang);
-      state.lastSpoken = translation;
+    if (type === 'dynamic' && displayTranslation && displayTranslation !== state.lastSpoken) {
+      speakText(displayTranslation, state.currentLang);
+      state.lastSpoken = displayTranslation;
       setTimeout(() => { state.lastSpoken = null; }, 3000);
     }
   } else {
