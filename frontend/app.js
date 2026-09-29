@@ -393,7 +393,7 @@ const SIGN_DRAWERS = {
   'DEFAULT':    drawDefaultLetter,
 };
 
-function clearCanvas() {
+function clearCanvas(emotion = 'neutral') {
   const ctx = state.avatarCtx;
   const W = state.avatarCanvas.width;
   const H = state.avatarCanvas.height;
@@ -405,6 +405,71 @@ function clearCanvas() {
   grad.addColorStop(1, 'rgba(5, 8, 20, 0.99)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
+
+  // ── Draw Cybernetic Body Silhouette ──
+  ctx.save();
+  ctx.translate(W/2, H/2);
+  
+  // Torso
+  ctx.beginPath();
+  ctx.moveTo(-70, 180);
+  ctx.lineTo(-40, 60);
+  ctx.lineTo(40, 60);
+  ctx.lineTo(70, 180);
+  ctx.fillStyle = 'rgba(0, 212, 255, 0.03)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0, 212, 255, 0.15)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(0, -10, 45, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0, 212, 255, 0.05)';
+  ctx.fill();
+  ctx.stroke();
+
+  // Eyes (Emotions)
+  ctx.fillStyle = 'rgba(0, 212, 255, 0.8)';
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 10;
+  
+  if (emotion === 'happy') {
+    // Happy eyes ^ ^
+    ctx.beginPath(); ctx.arc(-15, -20, 6, Math.PI, 0); ctx.stroke();
+    ctx.beginPath(); ctx.arc(15, -20, 6, Math.PI, 0); ctx.stroke();
+    // Smile
+    ctx.beginPath(); ctx.arc(0, 5, 15, 0, Math.PI); ctx.stroke();
+  } else if (emotion === 'sad') {
+    // Sad eyes
+    ctx.beginPath(); ctx.ellipse(-15, -15, 5, 2, 0.2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(15, -15, 5, 2, -0.2, 0, Math.PI*2); ctx.fill();
+    // Frown
+    ctx.beginPath(); ctx.arc(0, 15, 12, Math.PI, Math.PI*2); ctx.stroke();
+  } else if (emotion === 'angry') {
+    // Angry eyes
+    ctx.beginPath(); ctx.moveTo(-25, -25); ctx.lineTo(-10, -15); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(25, -25); ctx.lineTo(10, -15); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-15, -15, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(15, -15, 4, 0, Math.PI*2); ctx.fill();
+    // Straight mouth
+    ctx.beginPath(); ctx.moveTo(-10, 10); ctx.lineTo(10, 10); ctx.stroke();
+  } else {
+    // Neutral eyes
+    ctx.beginPath(); ctx.ellipse(-15, -15, 4, 6, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(15, -15, 4, 6, 0, 0, Math.PI*2); ctx.fill();
+    // Neutral mouth
+    ctx.beginPath(); ctx.moveTo(-8, 8); ctx.lineTo(8, 8); ctx.stroke();
+  }
+
+  // Neck core
+  ctx.beginPath();
+  ctx.moveTo(-10, 35); ctx.lineTo(10, 35);
+  ctx.lineTo(15, 60); ctx.lineTo(-15, 60);
+  ctx.fillStyle = 'rgba(0, 212, 255, 0.2)';
+  ctx.fill();
+
+  ctx.restore();
 }
 
 function drawHand(ctx, cx, cy, scale, color = '#00d4ff') {
@@ -476,7 +541,7 @@ function drawLabel(ctx, text, cx, cy) {
 
 // ── Individual sign drawings ───────────────────────────────────────────
 function drawWave(ctx, W, H, t) {
-  clearCanvas();
+  clearCanvas('happy');
   const cx = W / 2;
   const cy = H / 2 - 20;
   const swing = Math.sin(t * 0.006) * 30;
@@ -515,7 +580,7 @@ function drawWave(ctx, W, H, t) {
 }
 
 function drawThumbsUp(ctx, W, H, t) {
-  clearCanvas();
+  clearCanvas('happy');
   const cx = W / 2;
   const cy = H / 2 + 20;
   const pulse = 1 + Math.sin(t * 0.005) * 0.05;
@@ -555,7 +620,7 @@ function drawThumbsUp(ctx, W, H, t) {
 }
 
 function drawThumbsDown(ctx, W, H, t) {
-  clearCanvas();
+  clearCanvas('sad');
   const cx = W / 2;
   const cy = H / 2 - 20;
 
@@ -631,7 +696,7 @@ function drawOpenPalm(ctx, W, H, t) {
 }
 
 function drawFist(ctx, W, H, t) {
-  clearCanvas();
+  clearCanvas('angry');
   const cx = W / 2;
   const cy = H / 2;
   const shake = Math.sin(t * 0.01) * 5;
