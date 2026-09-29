@@ -32,6 +32,9 @@ DYNAMIC_GESTURES = {
     'fist':        'No / Нет / Yo\'q',
     'peace':       'Peace / Мир / Tinchlik',
     'point_up':    'Yes / Да / Ha',
+    'ok_sign':     'OK / Окей / OK',
+    'pinched':     'What? / Что? / Nima?',
+    'call_me':     'Call me / Позвони / Qo\'ng\'iroq qil',
 }
 
 # Hand connection pairs for drawing (21 landmarks)
@@ -198,6 +201,32 @@ class GestureEngine:
                 not above_palm(middle_tip, 0.08) and
                 not above_palm(ring_tip, 0.05)):
             return 'point_up'
+
+        # OK sign: thumb and index close, others extended
+        dist_ok = np.linalg.norm(index_tip - thumb_tip)
+        if (dist_ok < 0.05 and
+                above_palm(middle_tip, 0.08) and
+                above_palm(ring_tip, 0.05) and
+                above_palm(pinky_tip, 0.05)):
+            return 'ok_sign'
+
+        # Pinched (Chef's kiss): all tips close to thumb tip
+        dist_idx = np.linalg.norm(index_tip - thumb_tip)
+        dist_mid = np.linalg.norm(middle_tip - thumb_tip)
+        dist_ring = np.linalg.norm(ring_tip - thumb_tip)
+        dist_pinky = np.linalg.norm(pinky_tip - thumb_tip)
+        if max(dist_idx, dist_mid, dist_ring, dist_pinky) < 0.08:
+            return 'pinched'
+
+        # Call me: thumb and pinky extended sideways/up, others closed
+        if (above_palm(pinky_tip, 0.05) and
+                thumb_tip[1] < palm_center[1] and
+                not above_palm(index_tip, 0.05) and
+                not above_palm(middle_tip, 0.05) and
+                not above_palm(ring_tip, 0.05)):
+            # extra check for thumb distance
+            if np.linalg.norm(thumb_tip - pinky_tip) > 0.15:
+                return 'call_me'
 
         return None
 
