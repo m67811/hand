@@ -229,7 +229,12 @@ class GestureEngine:
 
         if thumb_open and idx and not mid and not ring and not pinky:
             return 'L', 0.78
+        if thumb_open and idx and mid and not ring and not pinky:
+            return 'K', 0.65
         if not thumb_open and idx and mid and not ring and not pinky:
+            dist = np.linalg.norm(pts[8] - pts[12])
+            if dist < 0.05:
+                return 'U', 0.70
             return 'V', 0.78
         if not thumb_open and idx and mid and ring and pinky:
             return 'B', 0.72
@@ -240,9 +245,16 @@ class GestureEngine:
         if thumb_open and not idx and not mid and not ring and pinky:
             return 'Y', 0.72
         if not thumb_open and idx and not mid and not ring and pinky:
+            return 'I', 0.70
+        if thumb_open and idx and not mid and not ring and pinky:
             return 'I-LOVE-YOU', 0.70
-        if thumb_open and idx and mid and not ring and not pinky:
-            return 'THREE', 0.65
+        if not thumb_open and idx and not mid and not ring and not pinky:
+            return 'D', 0.75
+        if not idx and mid and ring and pinky:
+            return 'F', 0.75
+        if thumb_open and not idx and not mid and not ring and not pinky:
+            return 'A', 0.50 # fallback for closed fist with thumb out
+
 
         return 'UNKNOWN', 0.30
 

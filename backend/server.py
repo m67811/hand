@@ -89,6 +89,15 @@ async def root():
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.exists(index_path):
         return FileResponse(index_path)
+    return {"error": "Frontend not found"}
+
+@app.get("/{filename:path}")
+async def serve_static(filename: str):
+    file_path = os.path.join(FRONTEND_DIR, filename)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    # If not found in frontend, just return 404 (Uvicorn will handle it gracefully)
+    raise HTTPException(status_code=404, detail="Item not found")
     return {"message": "SignBridge API is running", "docs": "/docs"}
 
 

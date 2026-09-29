@@ -40,27 +40,34 @@ _init_tts()
 # Sign language avatar gesture mappings
 # Maps words/phrases to animation sequences
 AVATAR_ANIMATIONS = {
-    # Common phrases
-    "hello": ["wave"],
-    "hi": ["wave"],
-    "salom": ["wave"],
-    "привет": ["wave"],
-    "goodbye": ["wave", "open_palm"],
-    "yes": ["thumbs_up", "point_up"],
-    "no": ["fist", "shake_head"],
-    "да": ["thumbs_up"],
-    "нет": ["fist"],
-    "ha": ["thumbs_up"],
-    "yo'q": ["fist"],
-    "good": ["thumbs_up"],
-    "bad": ["thumbs_down"],
-    "thank you": ["open_palm", "bow"],
-    "please": ["open_palm"],
-    "sorry": ["fist", "chest_tap"],
-    "help": ["wave", "point"],
-    "stop": ["open_palm"],
-    "go": ["point"],
-    "come": ["wave_inward"],
+    # ── GREETINGS & BASICS ──
+    "hello": ["wave"], "hi": ["wave"], "привет": ["wave"], "здравствуйте": ["wave"], "salom": ["wave"],
+    "goodbye": ["wave", "open_palm"], "пока": ["wave", "open_palm"], "до свидания": ["wave", "open_palm"], "xayr": ["wave", "open_palm"],
+    "yes": ["thumbs_up"], "да": ["thumbs_up"], "ha": ["thumbs_up"],
+    "no": ["fist"], "нет": ["fist"], "yo'q": ["fist"],
+    "good": ["thumbs_up"], "хорошо": ["thumbs_up"], "yaxshi": ["thumbs_up"],
+    "bad": ["thumbs_down"], "плохо": ["thumbs_down"], "yomon": ["thumbs_down"],
+    "stop": ["open_palm"], "стоп": ["open_palm"], "to'xta": ["open_palm"],
+    "please": ["open_palm"], "пожалуйста": ["open_palm"], "iltimos": ["open_palm"],
+    "thank you": ["open_palm", "bow"], "спасибо": ["open_palm", "bow"], "rahmat": ["open_palm", "bow"],
+    
+    # ── EMOTIONS ──
+    "love": ["I-LOVE-YOU"], "любовь": ["I-LOVE-YOU"], "люблю": ["I-LOVE-YOU"], "sevgi": ["I-LOVE-YOU"], "yaxshi ko'raman": ["I-LOVE-YOU"],
+    "peace": ["peace"], "мир": ["peace"], "tinchlik": ["peace"],
+    "happy": ["thumbs_up", "wave"], "счастлив": ["thumbs_up", "wave"], "радость": ["thumbs_up", "wave"], "xursand": ["thumbs_up", "wave"],
+    "sad": ["thumbs_down"], "грустно": ["thumbs_down"], "xafa": ["thumbs_down"],
+    
+    # ── QUESTIONS (Mapped to point/open_palm combos) ──
+    "who": ["point_up", "open_palm"], "кто": ["point_up", "open_palm"], "kim": ["point_up", "open_palm"],
+    "what": ["open_palm", "open_palm"], "что": ["open_palm", "open_palm"], "nima": ["open_palm", "open_palm"],
+    "where": ["point_up", "wave"], "где": ["point_up", "wave"], "qayerda": ["point_up", "wave"],
+    
+    # ── MEDICAL / URGENT ──
+    "help": ["wave", "open_palm", "point_up"], "помогите": ["wave", "open_palm", "point_up"], "yordam": ["wave", "open_palm", "point_up"],
+    "doctor": ["point_up", "open_palm"], "врач": ["point_up", "open_palm"], "доктор": ["point_up", "open_palm"], "shifokor": ["point_up", "open_palm"],
+    "pain": ["fist", "thumbs_down"], "боль": ["fist", "thumbs_down"], "болит": ["fist", "thumbs_down"], "og'riq": ["fist", "thumbs_down"],
+
+    # ── FALLBACKS TO SPELLING ──
     "water": ["W", "A", "T", "E", "R"],
     "food": ["F", "O", "O", "D"],
     "school": ["S", "C", "H", "O", "O", "L"],
