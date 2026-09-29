@@ -164,7 +164,7 @@
     <section class="tab-section" id="tab-avatar">
       <div class="section-header">
         <h1 class="section-title">Текст → Жестовый аватар</h1>
-        <p class="section-desc">Введите текст — аватар покажет жесты глухонемым</p>
+        <p class="section-desc">Введите текст — аватар покажет учебную визуализацию жестов. Доступны русский, English и o‘zbek.</p>
       </div>
 
       <div class="avatar-layout">
@@ -210,6 +210,8 @@
               <button class="phrase-chip" onclick="setPhrase('Yes no stop')">Yes / No 👍</button>
               <button class="phrase-chip" onclick="setPhrase('I need help')">Help 🆘</button>
               <button class="phrase-chip" onclick="setPhrase('Water food school')">Water 💧</button>
+              <button class="phrase-chip" onclick="setPhrase('Where is the bathroom')">Bathroom 🚻</button>
+              <button class="phrase-chip" onclick="setPhrase('Call a doctor')">Doctor 🩺</button>
             </div>
           </div>
         </div>
@@ -234,6 +236,17 @@
             <div class="current-sign" id="current-sign">—</div>
             <div class="sign-label" id="sign-label">Жест</div>
           </div>
+          <p class="avatar-note">Аватар показывает 50+ распространённых слов и фраз; незнакомые слова отображаются по буквам.</p>
+
+          <section class="translation-plan" aria-live="polite" aria-label="План перевода">
+            <div class="translation-plan-header">
+              <span>План перевода</span>
+              <span class="coverage-badge" id="translation-coverage">—</span>
+            </div>
+            <div class="translation-meta" id="translation-meta">Введите текст, чтобы увидеть глоссы и покрытие словаря.</div>
+            <div class="gloss-list" id="gloss-list"></div>
+            <div class="unknown-words" id="unknown-words"></div>
+          </section>
 
           <!-- Animation sequence -->
           <div class="sequence-display" id="sequence-display">

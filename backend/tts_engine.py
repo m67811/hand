@@ -10,6 +10,8 @@ import threading
 import tempfile
 from pathlib import Path
 
+from sign_language import translator
+
 # TTS backends (tries in order)
 TTS_BACKEND = None
 
@@ -37,43 +39,64 @@ def _init_tts():
 
 _init_tts()
 
-# Sign language avatar gesture mappings
-# Maps words/phrases to animation sequences
+# Gesture vocabulary used by the avatar.  These are visual, educational
+# approximations; a production interpreter must be validated by native users
+# of the chosen sign language (ASL/RSL/UzSL are not interchangeable).
 AVATAR_ANIMATIONS = {
-    # ── GREETINGS & BASICS ──
+    # greetings / politeness
     "hello": ["wave"], "hi": ["wave"], "привет": ["wave"], "здравствуйте": ["wave"], "salom": ["wave"],
-    "goodbye": ["wave", "open_palm"], "пока": ["wave", "open_palm"], "до свидания": ["wave", "open_palm"], "xayr": ["wave", "open_palm"],
-    "yes": ["thumbs_up"], "да": ["thumbs_up"], "ha": ["thumbs_up"],
-    "no": ["fist"], "нет": ["fist"], "yo'q": ["fist"],
-    "good": ["thumbs_up"], "хорошо": ["thumbs_up"], "yaxshi": ["thumbs_up"],
-    "bad": ["thumbs_down"], "плохо": ["thumbs_down"], "yomon": ["thumbs_down"],
-    "stop": ["open_palm"], "стоп": ["open_palm"], "to'xta": ["open_palm"],
-    "please": ["open_palm"], "пожалуйста": ["open_palm"], "iltimos": ["open_palm"],
-    "thank you": ["open_palm", "bow"], "спасибо": ["open_palm", "bow"], "rahmat": ["open_palm", "bow"],
-    
-    # ── EMOTIONS ──
-    "love": ["I-LOVE-YOU"], "любовь": ["I-LOVE-YOU"], "люблю": ["I-LOVE-YOU"], "sevgi": ["I-LOVE-YOU"], "yaxshi ko'raman": ["I-LOVE-YOU"],
-    "peace": ["peace"], "мир": ["peace"], "tinchlik": ["peace"],
-    "happy": ["thumbs_up", "wave"], "счастлив": ["thumbs_up", "wave"], "радость": ["thumbs_up", "wave"], "xursand": ["thumbs_up", "wave"],
-    "sad": ["thumbs_down"], "грустно": ["thumbs_down"], "xafa": ["thumbs_down"],
-    
-    # ── QUESTIONS (Mapped to point/open_palm combos) ──
-    "who": ["point_up", "open_palm"], "кто": ["point_up", "open_palm"], "kim": ["point_up", "open_palm"],
-    "what": ["open_palm", "open_palm"], "что": ["open_palm", "open_palm"], "nima": ["open_palm", "open_palm"],
-    "where": ["point_up", "wave"], "где": ["point_up", "wave"], "qayerda": ["point_up", "wave"],
-    
-    # ── MEDICAL / URGENT ──
-    "help": ["wave", "open_palm", "point_up"], "помогите": ["wave", "open_palm", "point_up"], "yordam": ["wave", "open_palm", "point_up"],
-    "doctor": ["point_up", "open_palm"], "врач": ["point_up", "open_palm"], "доктор": ["point_up", "open_palm"], "shifokor": ["point_up", "open_palm"],
-    "pain": ["fist", "thumbs_down"], "боль": ["fist", "thumbs_down"], "болит": ["fist", "thumbs_down"], "og'riq": ["fist", "thumbs_down"],
-
-    # ── FALLBACKS TO SPELLING ──
-    "water": ["W", "A", "T", "E", "R"],
-    "food": ["F", "O", "O", "D"],
-    "school": ["S", "C", "H", "O", "O", "L"],
-    "teacher": ["T", "E", "A", "C", "H", "E", "R"],
-    "student": ["S", "T", "U", "D", "E", "N", "T"],
+    "goodbye": ["goodbye"], "пока": ["goodbye"], "прощай": ["goodbye"], "xayr": ["goodbye"],
+    "please": ["please"], "пожалуйста": ["please"], "iltimos": ["please"],
+    "thanks": ["thank_you"], "thank": ["thank_you"], "спасибо": ["thank_you"], "rahmat": ["thank_you"],
+    "sorry": ["sorry"], "извините": ["sorry"], "прости": ["sorry"], "kechirasiz": ["sorry"],
+    "yes": ["yes"], "да": ["yes"], "ha": ["yes"], "no": ["no"], "нет": ["no"], "yo'q": ["no"],
+    "good": ["good"], "хорошо": ["good"], "yaxshi": ["good"], "bad": ["bad"], "плохо": ["bad"], "yomon": ["bad"],
+    "stop": ["stop"], "стоп": ["stop"], "to'xta": ["stop"], "wait": ["wait"], "ждите": ["wait"], "подождите": ["wait"], "kuting": ["wait"],
+    # people / conversation
+    "i": ["me"], "me": ["me"], "я": ["me"], "меня": ["me"], "men": ["me"],
+    "you": ["you"], "ты": ["you"], "вы": ["you"], "siz": ["you"],
+    "name": ["name"], "имя": ["name"], "ism": ["name"], "friend": ["friend"], "друг": ["friend"], "друзья": ["friend"], "do'st": ["friend"],
+    "mother": ["mother"], "мама": ["mother"], "ona": ["mother"], "father": ["father"], "папа": ["father"], "отец": ["father"], "ota": ["father"],
+    "family": ["family"], "семья": ["family"], "oila": ["family"],
+    "understand": ["understand"], "понимаю": ["understand"], "понял": ["understand"], "tushundim": ["understand"],
+    "again": ["again"], "снова": ["again"], "ещё": ["again"], "yana": ["again"], "slow": ["slow"], "медленно": ["slow"], "sekin": ["slow"],
+    # needs / everyday life
+    "want": ["want"], "хочу": ["want"], "xohlayman": ["want"], "need": ["need"], "нужно": ["need"], "нужен": ["need"], "kerak": ["need"],
+    "help": ["help"], "помогите": ["help"], "помощь": ["help"], "yordam": ["help"],
+    "water": ["water"], "вода": ["water"], "suv": ["water"], "drink": ["drink"], "пить": ["drink"], "ichish": ["drink"],
+    "food": ["food"], "еда": ["food"], "ovqat": ["food"], "eat": ["eat"], "есть": ["eat"], "кушать": ["eat"], "yemoq": ["eat"],
+    "home": ["home"], "дом": ["home"], "uy": ["home"], "school": ["school"], "школа": ["school"], "maktab": ["school"],
+    "work": ["work"], "работа": ["work"], "ish": ["work"], "money": ["money"], "деньги": ["money"], "pul": ["money"],
+    "phone": ["phone"], "телефон": ["phone"], "call": ["phone"], "звонок": ["phone"], "qo'ng'iroq": ["phone"],
+    # questions / time / directions
+    "who": ["who"], "кто": ["who"], "kim": ["who"], "what": ["what"], "что": ["what"], "nima": ["what"],
+    "where": ["where"], "где": ["where"], "qayerda": ["where"], "when": ["when"], "когда": ["when"], "qachon": ["when"],
+    "how": ["how"], "как": ["how"], "qanday": ["how"], "why": ["why"], "почему": ["why"], "nega": ["why"],
+    "today": ["today"], "сегодня": ["today"], "bugun": ["today"], "tomorrow": ["tomorrow"], "завтра": ["tomorrow"], "ertaga": ["tomorrow"],
+    "morning": ["morning"], "утро": ["morning"], "ertalab": ["morning"], "night": ["night"], "ночь": ["night"], "kecha": ["night"],
+    "left": ["left"], "налево": ["left"], "chap": ["left"], "right": ["right"], "направо": ["right"], "o'ng": ["right"],
+    # wellbeing / emergency / emotions
+    "doctor": ["doctor"], "врач": ["doctor"], "доктор": ["doctor"], "shifokor": ["doctor"],
+    "hospital": ["hospital"], "больница": ["hospital"], "kasalxona": ["hospital"], "pain": ["pain"], "боль": ["pain"], "болит": ["pain"], "og'riq": ["pain"],
+    "emergency": ["emergency"], "срочно": ["emergency"], "опасность": ["emergency"], "tez": ["emergency"],
+    "bathroom": ["bathroom"], "туалет": ["bathroom"], "hojatxona": ["bathroom"],
+    "love": ["love"], "любовь": ["love"], "люблю": ["love"], "sevgi": ["love"],
+    "peace": ["peace"], "мир": ["peace"], "tinchlik": ["peace"], "happy": ["happy"], "счастлив": ["happy"], "радость": ["happy"], "xursand": ["happy"],
+    "sad": ["sad"], "грустно": ["sad"], "xafa": ["sad"],
 }
+
+# Phrases are consumed before individual words so that a sentence has useful
+# signs instead of being fingerspelled one character at a time.
+AVATAR_PHRASES = {
+    "thank you": ["thank_you"], "спасибо большое": ["thank_you"], "i need help": ["me", "need", "help"],
+    "мне нужна помощь": ["me", "need", "help"], "мне плохо": ["me", "bad"], "я не понимаю": ["me", "no", "understand"],
+    "how are you": ["how", "you"], "как дела": ["how", "you"], "what is your name": ["what", "you", "name"],
+    "where is the bathroom": ["where", "bathroom"], "где туалет": ["where", "bathroom"],
+    "call a doctor": ["phone", "doctor"], "вызовите врача": ["phone", "doctor"], "мне нужна вода": ["me", "need", "water"],
+}
+
+ANIMATION_GESTURES = {gesture for gestures in AVATAR_ANIMATIONS.values() for gesture in gestures}
+ANIMATION_GESTURES.update(gesture for gestures in AVATAR_PHRASES.values() for gesture in gestures)
 
 # Language detection mappings
 LANGUAGE_MAP = {
@@ -84,15 +107,8 @@ LANGUAGE_MAP = {
 
 
 def detect_language(text: str) -> str:
-    """Simple heuristic language detection."""
-    # Cyrillic → Russian
-    if any('\u0400' <= c <= '\u04FF' for c in text):
-        return 'ru'
-    # Common Uzbek words
-    uz_markers = ["salom", "yaxshi", "rahmat", "ha", "yo'q", "o'", "g'"]
-    if any(m in text.lower() for m in uz_markers):
-        return 'uz'
-    return 'en'
+    """Detect the source language using the same rules as the planner."""
+    return translator.detect_language(text)
 
 
 def text_to_speech(text: str, lang: str = None, output_path: str = None) -> str:
@@ -171,54 +187,17 @@ def play_audio(filepath: str):
     t.start()
 
 
-def text_to_avatar_sequence(text: str) -> list[dict]:
+def text_to_avatar_plan(text: str, lang: str = None) -> dict:
+    """Return a data-driven, inspectable sign-animation plan."""
+    return translator.plan(text, lang)
+
+
+def text_to_avatar_sequence(text: str, lang: str = None) -> list[dict]:
     """
     Convert text to a sequence of avatar animation commands.
     Returns list of {gesture: str, duration: float, label: str}
     """
-    words = text.lower().strip().split()
-    sequence = []
-
-    for word in words:
-        # Remove punctuation
-        clean = word.strip('.,!?;:')
-
-        if clean in AVATAR_ANIMATIONS:
-            anims = AVATAR_ANIMATIONS[clean]
-            for anim in anims:
-                sequence.append({
-                    'gesture': anim,
-                    'duration': 0.8,
-                    'label': clean,
-                    'type': 'gesture' if len(anim) > 1 else 'letter'
-                })
-        else:
-            # Fingerspell letter by letter
-            for char in clean.upper():
-                if char.isalpha():
-                    sequence.append({
-                        'gesture': char,
-                        'duration': 0.5,
-                        'label': char,
-                        'type': 'letter'
-                    })
-                elif char == ' ':
-                    sequence.append({
-                        'gesture': 'PAUSE',
-                        'duration': 0.3,
-                        'label': ' ',
-                        'type': 'pause'
-                    })
-
-        # Word pause
-        sequence.append({
-            'gesture': 'PAUSE',
-            'duration': 0.4,
-            'label': '|',
-            'type': 'pause'
-        })
-
-    return sequence
+    return text_to_avatar_plan(text, lang)["sequence"]
 
 
 def speak_async(text: str, lang: str = None):

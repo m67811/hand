@@ -31,8 +31,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from gesture_engine import GestureEngine
 from tts_engine import (
-    text_to_speech, text_to_avatar_sequence, detect_language, speak_async
+    text_to_speech, text_to_avatar_plan, detect_language, speak_async
 )
+from sign_language import translator
 
 # ──────────────────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -82,6 +83,12 @@ async def health():
         "model": "loaded" if (gesture_engine and gesture_engine.static_model) else "rule-based",
         "timestamp": time.time()
     }
+
+
+@app.get("/vocabulary")
+async def vocabulary():
+    """Expose lexicon metadata for clients and future admin tools."""
+    return translator.vocabulary()
 
 
 @app.get("/")
@@ -134,13 +141,9 @@ async def generate_tts(req: TTSRequest):
 
 @app.post("/translate")
 async def translate_to_avatar(req: TranslateRequest):
-    """Convert text to avatar animation sequence."""
-    sequence = text_to_avatar_sequence(req.text)
-    return JSONResponse({
-        "text": req.text,
-        "sequence": sequence,
-        "total_duration": sum(s['duration'] for s in sequence)
-    })
+    """Create an inspectable text → gloss → avatar animation plan."""
+    plan = text_to_avatar_plan(req.text, req.lang)
+    return JSONResponse({"text": req.text, **plan})
 
 
 @app.post("/clear-word")
@@ -251,8 +254,8 @@ async def avatar_websocket(websocket: WebSocket):
             if not text:
                 continue
 
-            # Generate animation sequence
-            sequence = text_to_avatar_sequence(text)
+            # Generate an inspectable animation plan from the JSON lexicon.
+            plan = text_to_avatar_plan(text, lang)
 
             # Send TTS audio
             audio_path = text_to_speech(text, lang)
@@ -264,8 +267,7 @@ async def avatar_websocket(websocket: WebSocket):
             response = {
                 "type": "animation",
                 "text": text,
-                "sequence": sequence,
-                "total_duration": sum(s['duration'] for s in sequence),
+                **plan,
                 "audio_base64": audio_b64,
                 "timestamp": time.time()
             }

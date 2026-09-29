@@ -38,6 +38,8 @@ const state = {
   avatarSequence: [],
   avatarIndex: 0,
   avatarTimer: null,
+  avatarIdleTimer: null,
+  avatarAnimating: false,
   avatarCanvas: null,
   avatarCtx: null,
 };
@@ -380,17 +382,23 @@ function initAvatarCanvas() {
 }
 
 // ── Sign drawings ──────────────────────────────────────────────────────
+// Every supported word is rendered by the articulated avatar below.  Keeping
+// the sign name here (rather than falling back to a large letter) makes the
+// sequence usable even for newly added vocabulary.
+const AVATAR_GESTURES = [
+  'wave', 'goodbye', 'please', 'thank_you', 'sorry', 'yes', 'no', 'good', 'bad', 'stop', 'wait',
+  'me', 'you', 'name', 'friend', 'mother', 'father', 'family', 'understand', 'again', 'slow',
+  'want', 'need', 'help', 'water', 'drink', 'food', 'eat', 'home', 'school', 'work', 'money', 'phone',
+  'who', 'what', 'where', 'when', 'how', 'why', 'today', 'tomorrow', 'morning', 'night', 'left', 'right',
+  'doctor', 'hospital', 'pain', 'emergency', 'bathroom', 'love', 'peace', 'happy', 'sad',
+  // Legacy names are retained so API clients from an older frontend still work.
+  'thumbs_up', 'thumbs_down', 'open_palm', 'fist', 'point_up', 'bow', 'I-LOVE-YOU'
+];
 const SIGN_DRAWERS = {
-  'wave':       drawWave,
-  'thumbs_up':  drawThumbsUp,
-  'thumbs_down':drawThumbsDown,
-  'open_palm':  drawOpenPalm,
-  'fist':       drawFist,
-  'peace':      drawPeace,
-  'point_up':   drawPointUp,
-  'bow':        drawBow,
-  'PAUSE':      drawPause,
-  'DEFAULT':    drawDefaultLetter,
+  ...Object.fromEntries(AVATAR_GESTURES.map(gesture => [gesture,
+    (ctx, W, H, t) => drawSignAvatar(ctx, W, H, t, gesture)])),
+  'PAUSE': drawPause,
+  'DEFAULT': drawDefaultLetter,
 };
 
 function clearCanvas(emotion = 'neutral') {
@@ -887,7 +895,130 @@ function drawDefaultLetter(ctx, W, H, t, letter) {
   ctx.fillText('ASL: ' + (letter || '?'), cx, H - 20);
 }
 
+// ── Articulated signing avatar ─────────────────────────────────────────
+// Coordinates are deliberately stored as poses: it makes adding vocabulary a
+// data change and, unlike the former icon-like drawings, always shows a body,
+// elbows, wrists and two independently shaped hands.
+const SIGN_POSES = {
+  wave:       { r:[302,126, 'open'],  l:[108,265, 'flat'], emotion:'happy', motion:'wave', label:'Приветствие' },
+  goodbye:    { r:[300,132, 'open'],  l:[108,265, 'flat'], emotion:'happy', motion:'wave', label:'До свидания' },
+  please:     { r:[245,276, 'flat'],  l:[155,276, 'flat'], label:'Пожалуйста' },
+  thank_you:  { r:[230,174, 'flat'],  l:[125,262, 'flat'], emotion:'happy', motion:'out', label:'Спасибо' },
+  sorry:      { r:[236,250, 'fist'],  l:[162,270, 'flat'], emotion:'sad', motion:'circle', label:'Извините' },
+  yes:        { r:[255,210, 'fist'],  l:[130,275, 'flat'], motion:'nod', label:'Да' },
+  no:         { r:[240,204, 'point'], l:[160,204, 'point'], emotion:'sad', motion:'side', label:'Нет' },
+  good:       { r:[270,230, 'thumb'], l:[125,270, 'flat'], emotion:'happy', label:'Хорошо' },
+  bad:        { r:[270,258, 'thumb'], l:[125,270, 'flat'], emotion:'sad', label:'Плохо' },
+  stop:       { r:[270,205, 'open'],  l:[130,270, 'flat'], emotion:'alert', label:'Стоп' },
+  wait:       { r:[280,200, 'flat'],  l:[120,205, 'flat'], motion:'hold', label:'Подождите' },
+  me:         { r:[220,232, 'point'], l:[135,270, 'flat'], label:'Я / мне' },
+  you:        { r:[325,220, 'point'], l:[130,270, 'flat'], motion:'out', label:'Ты / вы' },
+  name:       { r:[245,180, 'flat'],  l:[155,180, 'flat'], motion:'tap', label:'Имя' },
+  friend:     { r:[230,245, 'hook'],  l:[170,245, 'hook'], motion:'link', label:'Друг' },
+  mother:     { r:[166,145, 'thumb'], l:[125,270, 'flat'], emotion:'happy', label:'Мама' },
+  father:     { r:[173,115, 'thumb'], l:[125,270, 'flat'], emotion:'happy', label:'Папа' },
+  family:     { r:[265,230, 'open'],  l:[135,230, 'open'], motion:'circle', label:'Семья' },
+  understand: { r:[230,152, 'flat'],  l:[140,270, 'flat'], motion:'out', label:'Понимаю' },
+  again:      { r:[255,220, 'flat'],  l:[145,220, 'flat'], motion:'repeat', label:'Ещё раз' },
+  slow:       { r:[260,235, 'flat'],  l:[140,235, 'flat'], motion:'down', label:'Медленнее' },
+  want:       { r:[250,225, 'open'],  l:[150,225, 'open'], motion:'pull', label:'Хочу' },
+  need:       { r:[245,188, 'hook'],  l:[150,270, 'flat'], motion:'down', label:'Нужно' },
+  help:       { r:[200,215, 'fist'],  l:[200,260, 'open'], motion:'lift', label:'Помощь' },
+  water:      { r:[208,182, 'point'], l:[135,270, 'flat'], label:'Вода' },
+  drink:      { r:[210,180, 'cup'],   l:[135,270, 'flat'], motion:'tilt', label:'Пить' },
+  food:       { r:[215,190, 'open'],  l:[135,270, 'flat'], motion:'tap', label:'Еда' },
+  eat:        { r:[210,185, 'pinch'], l:[135,270, 'flat'], motion:'tap', label:'Есть' },
+  home:       { r:[260,200, 'flat'],  l:[140,200, 'flat'], motion:'roof', label:'Дом' },
+  school:     { r:[245,238, 'flat'],  l:[155,255, 'flat'], motion:'book', label:'Школа' },
+  work:       { r:[245,248, 'fist'],  l:[155,248, 'fist'], motion:'tap', label:'Работа' },
+  money:      { r:[248,240, 'flat'],  l:[152,240, 'flat'], motion:'rub', label:'Деньги' },
+  phone:      { r:[295,184, 'phone'], l:[130,270, 'flat'], motion:'phone', label:'Телефон / позвонить' },
+  who:        { r:[300,195, 'point'], l:[135,270, 'flat'], motion:'side', label:'Кто?' },
+  what:       { r:[260,220, 'open'],  l:[140,220, 'open'], motion:'shake', label:'Что?' },
+  where:      { r:[300,210, 'point'], l:[120,210, 'point'], motion:'side', label:'Где?' },
+  when:       { r:[250,155, 'point'], l:[135,270, 'flat'], motion:'circle', label:'Когда?' },
+  how:        { r:[250,225, 'hook'],  l:[150,225, 'hook'], motion:'turn', label:'Как?' },
+  why:        { r:[250,165, 'open'],  l:[145,270, 'flat'], motion:'out', label:'Почему?' },
+  today:      { r:[205,225, 'flat'],  l:[155,225, 'flat'], motion:'circle', label:'Сегодня' },
+  tomorrow:   { r:[245,150, 'flat'],  l:[140,270, 'flat'], motion:'out', label:'Завтра' },
+  morning:    { r:[255,140, 'open'],  l:[130,270, 'flat'], motion:'rise', label:'Утро' },
+  night:      { r:[255,145, 'flat'],  l:[130,270, 'flat'], emotion:'sad', motion:'down', label:'Ночь' },
+  left:       { r:[70,220, 'point'],  l:[135,270, 'flat'], motion:'side', label:'Налево' },
+  right:      { r:[330,220, 'point'], l:[135,270, 'flat'], motion:'side', label:'Направо' },
+  doctor:     { r:[204,180, 'point'], l:[135,270, 'flat'], label:'Врач' },
+  hospital:   { r:[246,210, 'cross'], l:[150,250, 'flat'], emotion:'alert', label:'Больница' },
+  pain:       { r:[242,250, 'claw'],  l:[158,250, 'claw'], emotion:'sad', motion:'twist', label:'Боль' },
+  emergency:  { r:[300,165, 'open'],  l:[100,165, 'open'], emotion:'alert', motion:'shake', label:'Срочно!' },
+  bathroom:   { r:[250,240, 'T'],     l:[135,270, 'flat'], label:'Туалет' },
+  love:       { r:[228,232, 'heart'], l:[172,232, 'heart'], emotion:'happy', motion:'heart', label:'Любовь' },
+  peace:      { r:[270,195, 'v'],     l:[130,270, 'flat'], emotion:'happy', label:'Мир' },
+  happy:      { r:[240,166, 'open'],  l:[160,166, 'open'], emotion:'happy', motion:'rise', label:'Радость' },
+  sad:        { r:[238,240, 'flat'],  l:[162,240, 'flat'], emotion:'sad', motion:'down', label:'Грустно' },
+};
+
+const LEGACY_GESTURES = { thumbs_up:'good', thumbs_down:'bad', open_palm:'stop', fist:'no', point_up:'yes', bow:'thank_you', 'I-LOVE-YOU':'love' };
+
+function drawSignAvatar(ctx, W, H, t, gesture) {
+  const key = LEGACY_GESTURES[gesture] || gesture;
+  const pose = SIGN_POSES[key] || SIGN_POSES.wave;
+  const color = pose.emotion === 'alert' ? '#f59e0b' : pose.emotion === 'sad' ? '#a78bfa' : pose.emotion === 'happy' ? '#34d399' : '#22d3ee';
+  clearCanvas(pose.emotion === 'alert' ? 'angry' : pose.emotion || 'neutral');
+  const breathing = Math.sin(t * 0.003) * 2;
+  const motion = gestureOffset(pose.motion, t);
+
+  // A stronger upper-body silhouette grounds the hands in a readable signing space.
+  ctx.save();
+  ctx.translate(0, breathing);
+  ctx.fillStyle = 'rgba(19, 73, 100, 0.23)';
+  ctx.beginPath(); ctx.moveTo(105, 395); ctx.lineTo(125, 245); ctx.quadraticCurveTo(200, 218, 275, 245); ctx.lineTo(295, 395); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(34, 211, 238, 0.35)'; ctx.lineWidth = 2; ctx.stroke();
+  drawPoseArm(ctx, [128, 258], pose.l, 'left', color, motion);
+  drawPoseArm(ctx, [272, 258], pose.r, 'right', color, motion);
+  ctx.restore();
+  drawLabel(ctx, pose.label, W / 2, H - 18);
+}
+
+function gestureOffset(kind, t) {
+  const s = Math.sin(t * 0.008), c = Math.cos(t * 0.007);
+  const offsets = { wave:[s * 20, 0], side:[s * 13, 0], out:[s * 8, -s * 5], down:[0, Math.abs(s) * 12], rise:[0, -Math.abs(s) * 14], shake:[s * 7, c * 3], circle:[c * 8, s * 8], repeat:[s * 7, 0], lift:[0, -Math.abs(s) * 15], pull:[-Math.abs(s) * 10, 0], phone:[s * 5, s * 5], tilt:[s * 6, 0], heart:[0, -Math.abs(s) * 5] };
+  return offsets[kind] || [0, 0];
+}
+
+function drawPoseArm(ctx, shoulder, hand, side, color, offset) {
+  const wrist = [hand[0] + offset[0], hand[1] + offset[1]];
+  const elbow = [(shoulder[0] + wrist[0]) / 2 + (side === 'left' ? -20 : 20), (shoulder[1] + wrist[1]) / 2 + 18];
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.globalAlpha = 0.2;
+  ctx.beginPath(); ctx.moveTo(...shoulder); ctx.lineTo(...elbow); ctx.lineTo(...wrist); ctx.stroke();
+  ctx.globalAlpha = 0.85; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(...shoulder); ctx.lineTo(...elbow); ctx.lineTo(...wrist); ctx.stroke();
+  [shoulder, elbow].forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); });
+  drawPoseHand(ctx, wrist[0], wrist[1], hand[2], side, color);
+  ctx.restore();
+}
+
+function drawPoseHand(ctx, x, y, shape, side, color) {
+  const flip = side === 'left' ? -1 : 1;
+  ctx.save(); ctx.translate(x, y); ctx.scale(flip, 1);
+  ctx.shadowColor = color; ctx.shadowBlur = 16;
+  ctx.fillStyle = color; ctx.globalAlpha = 0.18; ctx.beginPath(); ctx.ellipse(0, 5, 21, 28, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 0.95; ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  const finger = (a, length = 30) => { ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(Math.sin(a) * length, -Math.cos(a) * length); ctx.stroke(); };
+  if (shape === 'fist') { ctx.beginPath(); ctx.roundRect(-18, -19, 36, 34, 12); ctx.stroke(); }
+  else if (shape === 'point') { finger(0, 42); finger(-1.1, 18); }
+  else if (shape === 'thumb') { ctx.beginPath(); ctx.moveTo(-5, 5); ctx.lineTo(-23, -24); ctx.stroke(); ctx.beginPath(); ctx.roundRect(-13, -5, 28, 22, 9); ctx.stroke(); }
+  else if (shape === 'v') { finger(-0.28, 39); finger(0.28, 39); finger(-1.25, 17); }
+  else if (shape === 'pinch' || shape === 'cup') { finger(-0.5, 24); finger(0.6, 24); ctx.beginPath(); ctx.arc(0, -18, 9, 0, Math.PI * 2); ctx.stroke(); }
+  else if (shape === 'phone') { finger(-1.15, 30); finger(0.82, 30); ctx.beginPath(); ctx.moveTo(-12, 8); ctx.lineTo(12, 8); ctx.stroke(); }
+  else if (shape === 'heart') { ctx.beginPath(); ctx.moveTo(0, 9); ctx.bezierCurveTo(-35, -15, -13, -37, 0, -18); ctx.bezierCurveTo(13, -37, 35, -15, 0, 9); ctx.stroke(); }
+  else if (shape === 'hook' || shape === 'claw') { [-0.45, 0, 0.45].forEach(a => { ctx.beginPath(); ctx.arc(Math.sin(a)*10, -15, 12, 0.3, 2.7); ctx.stroke(); }); }
+  else if (shape === 'cross') { finger(-0.55, 28); finger(0.55, 28); }
+  else if (shape === 'T') { finger(-Math.PI/2, 28); ctx.beginPath(); ctx.moveTo(-20, -25); ctx.lineTo(20, -25); ctx.stroke(); }
+  else { [-0.65, -0.23, 0.18, 0.58].forEach((a, i) => finger(a, i === 2 ? 40 : 33)); finger(-1.2, 24); }
+  ctx.restore();
+}
+
 function drawAvatarIdle() {
+  if (state.avatarAnimating) return;
   const canvas = state.avatarCanvas;
   if (!canvas) return;
   const ctx = state.avatarCtx;
@@ -915,9 +1046,7 @@ function drawAvatarIdle() {
 
   ctx.restore();
 
-  if (!state.avatarTimer) {
-    requestAnimationFrame(drawAvatarIdle);
-  }
+  state.avatarIdleTimer = requestAnimationFrame(drawAvatarIdle);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -939,7 +1068,10 @@ function sendToAvatar() {
       body: JSON.stringify({ text, lang: state.avatarLang })
     })
     .then(r => r.json())
-    .then(data => startAvatarAnimation(data.sequence, null))
+    .then(data => {
+      renderTranslationPlan(data);
+      startAvatarAnimation(data.sequence, data.text);
+    })
     .catch(e => toast('Ошибка: сервер недоступен', 'error'));
   }
 }
@@ -958,12 +1090,43 @@ function handleAvatarResponse(data) {
     audio.play().catch(() => {});
   }
 
+  renderTranslationPlan(data);
   startAvatarAnimation(data.sequence, data.text);
+}
+
+function renderTranslationPlan(plan) {
+  const coverage = $('translation-coverage');
+  const meta = $('translation-meta');
+  const glosses = $('gloss-list');
+  const unknown = $('unknown-words');
+  if (!coverage || !meta || !glosses || !unknown) return;
+
+  const languageNames = { en: 'English', ru: 'Русский', uz: 'O‘zbek' };
+  const percentage = Number.isFinite(plan.coverage) ? plan.coverage : 0;
+  coverage.textContent = `${percentage}% словаря`;
+  meta.textContent = `Язык: ${languageNames[plan.language] || plan.language || '—'} · Глоссы — порядок жестов для аватара`;
+  glosses.replaceChildren();
+  (plan.glosses || []).forEach(gloss => {
+    const token = document.createElement('span');
+    token.className = 'gloss-token';
+    token.textContent = gloss;
+    glosses.appendChild(token);
+  });
+  const missing = plan.unknown_words || [];
+  const dropped = plan.dropped_words || [];
+  const notices = [];
+  if (missing.length) notices.push(`По буквам: ${missing.join(', ')}. Добавьте эти слова в словарь после проверки жеста.`);
+  if (dropped.length) notices.push(`Пропущены служебные слова: ${dropped.join(', ')}.`);
+  unknown.textContent = notices.length ? notices.join(' ') : 'Все слова найдены в текущем словаре.';
 }
 
 function startAvatarAnimation(sequence, text) {
   // Clear previous
-  clearTimeout(state.avatarTimer);
+  state.avatarAnimating = true;
+  cancelAnimationFrame(state.avatarTimer);
+  cancelAnimationFrame(state.avatarIdleTimer);
+  $('avatar-idle').style.display = 'none';
+  $('avatar-status').textContent = 'Анимация...';
   state.avatarSequence = sequence || [];
   state.avatarIndex = 0;
 
@@ -979,7 +1142,8 @@ function animateNextSign() {
     $('avatar-status').textContent = 'Готов';
     // Return to idle animation
     state.avatarTimer = null;
-    requestAnimationFrame(drawAvatarIdle);
+    state.avatarAnimating = false;
+    drawAvatarIdle();
     return;
   }
 
