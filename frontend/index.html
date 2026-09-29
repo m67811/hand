@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SignBridge — Платформа перевода жестового языка</title>
+  <meta name="description" content="SignBridge: AI платформа для двустороннего перевода жестового языка в реальном времени. Распознавание жестов глухонемых и перевод речи в жесты." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ── Animated Background ── -->
+  <div class="bg-grid"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <!-- ── Header ── -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">🤟</div>
+        <div class="logo-text">
+          <span class="logo-main">SignBridge</span>
+          <span class="logo-sub">AI Sign Language Platform</span>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-tab="detect" onclick="switchTab('detect')">
+          <span class="nav-icon">📷</span> Распознавание
+        </button>
+        <button class="nav-btn" data-tab="avatar" onclick="switchTab('avatar')">
+          <span class="nav-icon">🤖</span> Аватар
+        </button>
+        <button class="nav-btn" data-tab="about" onclick="switchTab('about')">
+          <span class="nav-icon">ℹ️</span> О проекте
+        </button>
+      </nav>
+      <div class="status-indicator" id="status-indicator">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">Подключение...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 1: Gesture Detection (Sign → Text)    -->
+  <!-- ══════════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- DETECT TAB -->
+    <section class="tab-section active" id="tab-detect">
+      <div class="section-header">
+        <h1 class="section-title">Жест → Текст / Речь</h1>
+        <p class="section-desc">Покажите жест на камеру — система распознает и озвучит его</p>
+      </div>
+
+      <div class="detect-layout">
+        <!-- Camera Panel -->
+        <div class="panel camera-panel">
+          <div class="panel-header">
+            <h2>📷 Камера</h2>
+            <div class="camera-controls">
+              <button class="btn btn-primary" id="btn-start-camera" onclick="startCamera()">
+                ▶ Запустить
+              </button>
+              <button class="btn btn-danger hidden" id="btn-stop-camera" onclick="stopCamera()">
+                ⏹ Стоп
+              </button>
+            </div>
+          </div>
+          <div class="camera-container" id="camera-container">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="canvas-overlay" class="canvas-overlay"></canvas>
+            <div class="camera-placeholder" id="camera-placeholder">
+              <div class="placeholder-icon">📷</div>
+              <p>Нажмите «Запустить» для начала распознавания</p>
+            </div>
+            <!-- Live overlay -->
+            <div class="live-badge hidden" id="live-badge">● LIVE</div>
+            <div class="gesture-overlay" id="gesture-overlay">
+              <div class="detected-gesture" id="detected-gesture">—</div>
+              <div class="confidence-bar-wrap">
+                <div class="confidence-bar" id="confidence-bar"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Hand landmarks hint -->
+          <div class="hints">
+            <div class="hint-chip">👋 Держите руку в кадре</div>
+            <div class="hint-chip">💡 Хорошее освещение</div>
+            <div class="hint-chip">📏 30–60 см от камеры</div>
+          </div>
+        </div>
+
+        <!-- Result Panel -->
+        <div class="panel result-panel">
+          <div class="panel-header">
+            <h2>📝 Результат</h2>
+            <button class="btn btn-ghost" onclick="clearWord()">🗑 Очистить</button>
+          </div>
+
+          <!-- Current gesture -->
+          <div class="result-card" id="gesture-card">
+            <div class="result-label">Текущий жест</div>
+            <div class="result-value" id="result-gesture">—</div>
+            <div class="result-meta" id="result-type">Ожидание...</div>
+          </div>
+
+          <!-- Translation -->
+          <div class="result-card highlight-card">
+            <div class="result-label">Перевод</div>
+            <div class="result-value translation-value" id="result-translation">—</div>
+          </div>
+
+          <!-- Accumulated word -->
+          <div class="result-card word-card">
+            <div class="result-label">Накопленное слово</div>
+            <div class="word-display" id="word-display"></div>
+            <div class="word-hint">Держите жест 0.5 сек для добавления буквы</div>
+          </div>
+
+          <!-- TTS Controls -->
+          <div class="tts-controls">
+            <button class="btn btn-accent" id="btn-speak" onclick="speakWord()" disabled>
+              🔊 Озвучить слово
+            </button>
+            <button class="btn btn-primary" id="btn-speak-gesture" onclick="speakCurrentGesture()" disabled>
+              🗣 Озвучить жест
+            </button>
+          </div>
+
+          <!-- Language selector -->
+          <div class="lang-selector">
+            <label>Язык вывода:</label>
+            <div class="lang-pills">
+              <button class="lang-pill active" data-lang="en" onclick="setLang('en')">EN</button>
+              <button class="lang-pill" data-lang="ru" onclick="setLang('ru')">RU</button>
+              <button class="lang-pill" data-lang="uz" onclick="setLang('uz')">UZ</button>
+            </div>
+          </div>
+
+          <!-- History -->
+          <div class="history-panel">
+            <div class="history-header">
+              <span>📋 История жестов</span>
+              <button class="btn-link" onclick="clearHistory()">Очистить</button>
+            </div>
+            <div class="history-list" id="history-list">
+              <div class="history-empty">История пуста</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!-- TAB 2: Avatar (Text → Sign)              -->
+    <!-- ══════════════════════════════════════════ -->
+    <section class="tab-section" id="tab-avatar">
+      <div class="section-header">
+        <h1 class="section-title">Текст → Жестовый аватар</h1>
+        <p class="section-desc">Введите текст — аватар покажет жесты глухонемым</p>
+      </div>
+
+      <div class="avatar-layout">
+        <!-- Input -->
+        <div class="panel input-panel">
+          <div class="panel-header">
+            <h2>✏️ Введите текст</h2>
+          </div>
+          <textarea
+            id="avatar-input"
+            class="text-input"
+            placeholder="Введите текст для перевода в жестовый язык...
+Пример: Hello good morning thank you"
+            rows="5"
+          ></textarea>
+
+          <div class="input-controls">
+            <div class="lang-selector">
+              <label>Язык текста:</label>
+              <div class="lang-pills">
+                <button class="lang-pill active" data-lang="en" onclick="setAvatarLang('en')">EN</button>
+                <button class="lang-pill" data-lang="ru" onclick="setAvatarLang('ru')">RU</button>
+                <button class="lang-pill" data-lang="uz" onclick="setAvatarLang('uz')">UZ</button>
+              </div>
+            </div>
+            <button class="btn btn-accent btn-large" onclick="sendToAvatar()">
+              🤟 Перевести в жесты
+            </button>
+          </div>
+
+          <!-- Quick phrases -->
+          <div class="quick-phrases">
+            <div class="quick-label">Быстрые фразы:</div>
+            <div class="phrase-chips">
+              <button class="phrase-chip" onclick="setPhrase('Hello good morning')">Hello 👋</button>
+              <button class="phrase-chip" onclick="setPhrase('Thank you')">Thank you 🙏</button>
+              <button class="phrase-chip" onclick="setPhrase('Yes no stop')">Yes / No 👍</button>
+              <button class="phrase-chip" onclick="setPhrase('I need help')">Help 🆘</button>
+              <button class="phrase-chip" onclick="setPhrase('Water food school')">Water 💧</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Avatar Display -->
+        <div class="panel avatar-panel">
+          <div class="panel-header">
+            <h2>🤖 Жестовый аватар</h2>
+            <div class="avatar-status" id="avatar-status">Готов</div>
+          </div>
+
+          <div class="avatar-stage" id="avatar-stage">
+            <canvas id="avatar-canvas" width="400" height="400"></canvas>
+            <div class="avatar-idle" id="avatar-idle">
+              <div class="avatar-idle-icon">🤟</div>
+              <p>Введите текст и нажмите «Перевести»</p>
+            </div>
+          </div>
+
+          <!-- Current gesture display -->
+          <div class="avatar-gesture-info" id="avatar-gesture-info">
+            <div class="current-sign" id="current-sign">—</div>
+            <div class="sign-label" id="sign-label">Жест</div>
+          </div>
+
+          <!-- Animation sequence -->
+          <div class="sequence-display" id="sequence-display">
+            <div class="seq-label">Последовательность:</div>
+            <div class="seq-chips" id="seq-chips"></div>
+          </div>
+
+          <!-- Audio player -->
+          <div class="audio-player" id="audio-player" style="display:none">
+            <audio id="tts-audio" controls></audio>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!-- TAB 3: About                             -->
+    <!-- ══════════════════════════════════════════ -->
+    <section class="tab-section" id="tab-about">
+      <div class="section-header">
+        <h1 class="section-title">О проекте SignBridge</h1>
+        <p class="section-desc">AI платформа двустороннего перевода жестового языка</p>
+      </div>
+
+      <div class="about-grid">
+        <div class="about-card">
+          <div class="about-icon">🎯</div>
+          <h3>Цель</h3>
+          <p>Устранить коммуникационный барьер между глухонемыми людьми и остальным обществом с помощью ИИ и компьютерного зрения.</p>
+        </div>
+        <div class="about-card">
+          <div class="about-icon">🧠</div>
+          <h3>Технологии</h3>
+          <p>MediaPipe Holistic для детекции скелета руки, RandomForest/LSTM для классификации жестов, TTS для синтеза речи.</p>
+        </div>
+        <div class="about-card">
+          <div class="about-icon">🔄</div>
+          <h3>Двусторонний перевод</h3>
+          <p>
+            <strong>→ Жест в текст:</strong> Распознаёт жесты глухонемого и переводит в текст/речь<br/>
+            <strong>→ Текст в жест:</strong> Переводит речь/текст в жесты через 3D аватар
+          </p>
+        </div>
+        <div class="about-card">
+          <div class="about-icon">🌍</div>
+          <h3>Языки</h3>
+          <p>Поддержка ASL (американский жестовый язык), английского, русского и узбекского языков вывода.</p>
+        </div>
+        <div class="about-card">
+          <div class="about-icon">📊</div>
+          <h3>Архитектура</h3>
+          <p>Python FastAPI backend + WebSocket real-time + MediaPipe CV + JS/HTML5 frontend + TTS синтез</p>
+        </div>
+        <div class="about-card">
+          <div class="about-icon">🏫</div>
+          <h3>Применение</h3>
+          <p>Образование, здравоохранение, общественные места — везде где нужна коммуникация с глухонемыми людьми.</p>
+        </div>
+      </div>
+
+      <!-- Tech Stack -->
+      <div class="tech-stack">
+        <h3>Технологический стек</h3>
+        <div class="tech-list">
+          <div class="tech-item"><span class="tech-badge python">Python 3.11</span></div>
+          <div class="tech-item"><span class="tech-badge mediapipe">MediaPipe</span></div>
+          <div class="tech-item"><span class="tech-badge tf">TensorFlow</span></div>
+          <div class="tech-item"><span class="tech-badge sk">Scikit-learn</span></div>
+          <div class="tech-item"><span class="tech-badge fastapi">FastAPI</span></div>
+          <div class="tech-item"><span class="tech-badge ws">WebSocket</span></div>
+          <div class="tech-item"><span class="tech-badge cv">OpenCV</span></div>
+          <div class="tech-item"><span class="tech-badge tts">gTTS</span></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
