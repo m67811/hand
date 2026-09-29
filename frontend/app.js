@@ -1020,3 +1020,75 @@ function toast(message, type = 'info') {
   container.appendChild(el);
   setTimeout(() => el.remove(), 3200);
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// Speech-to-Text (Voice Input)
+// ══════════════════════════════════════════════════════════════════════════
+
+let recognition = null;
+let isRecording = false;
+
+function initSpeechRecognition() {
+  window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!window.SpeechRecognition) {
+    console.warn("Speech Recognition API not supported in this browser.");
+    return false;
+  }
+  recognition = new window.SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onresult = (event) => {
+    const text = event.results[0][0].transcript;
+    $('avatar-input').value = text;
+    toast('Речь распознана: ' + text, 'info');
+    toggleMic(true); // Stop recording UI
+  };
+
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error', event.error);
+    toast('Ошибка распознавания: ' + event.error, 'error');
+    toggleMic(true); // Stop recording UI
+  };
+  
+  recognition.onend = () => {
+    if (isRecording) {
+      toggleMic(true); // Stop recording UI if it ended unexpectedly
+    }
+  };
+
+  return true;
+}
+
+function toggleMic(forceStop = false) {
+  const btn = $('btn-mic');
+  
+  if (!recognition && !initSpeechRecognition()) {
+    toast('Ваш браузер не поддерживает голосовой ввод', 'error');
+    return;
+  }
+
+  if (isRecording || forceStop) {
+    // Stop recording
+    recognition.stop();
+    isRecording = false;
+    btn.classList.remove('recording');
+    btn.title = "Голосовой ввод";
+  } else {
+    // Start recording
+    // Set language based on selected pill
+    let langMap = { 'en': 'en-US', 'ru': 'ru-RU', 'uz': 'uz-UZ' };
+    recognition.lang = langMap[state.avatarLang] || 'en-US';
+    
+    try {
+      recognition.start();
+      isRecording = true;
+      btn.classList.add('recording');
+      btn.title = "Остановить запись";
+      toast('Говорите...', 'info');
+    } catch (e) {
+      console.error(e);
+      toast('Не удалось запустить микрофон', 'error');
+    }
+  }
+}

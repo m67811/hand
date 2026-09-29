@@ -33,6 +33,9 @@
         <button class="nav-btn" data-tab="avatar" onclick="switchTab('avatar')">
           <span class="nav-icon">🤖</span> Аватар
         </button>
+        <button class="nav-btn" data-tab="dict" onclick="switchTab('dict')">
+          <span class="nav-icon">📖</span> Словарь
+        </button>
         <button class="nav-btn" data-tab="about" onclick="switchTab('about')">
           <span class="nav-icon">ℹ️</span> О проекте
         </button>
@@ -187,9 +190,15 @@
                 <button class="lang-pill" data-lang="uz" onclick="setAvatarLang('uz')">UZ</button>
               </div>
             </div>
-            <button class="btn btn-accent btn-large" onclick="sendToAvatar()">
-              🤟 Перевести в жесты
-            </button>
+            
+            <div class="action-buttons">
+              <button class="btn btn-primary btn-icon" id="btn-mic" onclick="toggleMic()" title="Голосовой ввод">
+                🎤
+              </button>
+              <button class="btn btn-accent btn-large" style="flex: 1;" onclick="sendToAvatar()">
+                🤟 Перевести в жесты
+              </button>
+            </div>
           </div>
 
           <!-- Quick phrases -->
@@ -241,7 +250,128 @@
     </section>
 
     <!-- ══════════════════════════════════════════ -->
-    <!-- TAB 3: About                             -->
+    <!-- TAB 3: Dictionary (Словарь жестов)       -->
+    <!-- ══════════════════════════════════════════ -->
+    <section class="tab-section" id="tab-dict">
+      <div class="section-header">
+        <h1 class="section-title">Словарь жестов</h1>
+        <p class="section-desc">Изучайте жесты и тренируйтесь перед камерой</p>
+      </div>
+
+      <div class="dict-layout">
+        <!-- Dynamic Gestures -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>🌀 Динамические жесты</h2>
+          </div>
+          <div class="dict-grid" id="dict-dynamic">
+            <div class="dict-card">
+              <div class="dict-visual">👋</div>
+              <div class="dict-info">
+                <h4>Привет / Hello</h4>
+                <p>Взмахните рукой из стороны в сторону</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">👍</div>
+              <div class="dict-info">
+                <h4>Хорошо / Good</h4>
+                <p>Палец вверх, остальные собраны в кулак</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">👎</div>
+              <div class="dict-info">
+                <h4>Плохо / Bad</h4>
+                <p>Палец вниз, остальные собраны в кулак</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">✋</div>
+              <div class="dict-info">
+                <h4>Стоп / Stop</h4>
+                <p>Открытая ладонь направлена вперед</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">✊</div>
+              <div class="dict-info">
+                <h4>Нет / No</h4>
+                <p>Плотно сжатый кулак перед собой</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">✌️</div>
+              <div class="dict-info">
+                <h4>Мир / Peace</h4>
+                <p>Указательный и средний пальцы вверх (V)</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">☝️</div>
+              <div class="dict-info">
+                <h4>Да / Yes</h4>
+                <p>Только указательный палец поднят вверх</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Static Alphabet -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>✋ Статический алфавит (ASL)</h2>
+          </div>
+          <div class="dict-grid" id="dict-static">
+            <div class="dict-card">
+              <div class="dict-visual">A</div>
+              <div class="dict-info">
+                <h4>Буква A</h4>
+                <p>Кулак, большой палец сбоку прижат к указательному</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">B</div>
+              <div class="dict-info">
+                <h4>Буква B</h4>
+                <p>Открытая ладонь, пальцы вместе, большой палец согнут на ладони</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">L</div>
+              <div class="dict-info">
+                <h4>Буква L</h4>
+                <p>Указательный и большой пальцы образуют букву L</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">V</div>
+              <div class="dict-info">
+                <h4>Буква V</h4>
+                <p>Указательный и средний пальцы разведены в форме V</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">W</div>
+              <div class="dict-info">
+                <h4>Буква W</h4>
+                <p>Указательный, средний и безымянный пальцы подняты вверх</p>
+              </div>
+            </div>
+            <div class="dict-card">
+              <div class="dict-visual">Y</div>
+              <div class="dict-info">
+                <h4>Буква Y</h4>
+                <p>Оттопыренные большой палец и мизинец</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!-- TAB 4: About                             -->
     <!-- ══════════════════════════════════════════ -->
     <section class="tab-section" id="tab-about">
       <div class="section-header">
