@@ -8,18 +8,21 @@ expert-approved RSL, ASL or UzSL corpus without changing the API/frontend.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
+logger = logging.getLogger(__name__)
+
 LEXICON_PATH = Path(__file__).with_name("data") / "sign_lexicon.json"
-WORD_PATTERN = re.compile(r"[^\W_]+(?:['’][^\W_]+)?", re.UNICODE)
+WORD_PATTERN = re.compile(r"[^\W_]+(?:[''][^\W_]+)?", re.UNICODE)
 
 
 def _normalise(value: str) -> str:
-    return " ".join(WORD_PATTERN.findall(value.lower().replace("ё", "е").replace("’", "'")))
+    return " ".join(WORD_PATTERN.findall(value.lower().replace("ё", "е").replace("'", "'")))
 
 
 @dataclass(frozen=True)
@@ -149,4 +152,13 @@ class SignLanguageTranslator:
         return "uz" if any(marker in low for marker in uz_markers) else "en"
 
 
-translator = SignLanguageTranslator()
+try:
+    translator = SignLanguageTranslator()
+except (FileNotFoundError, json.JSONDecodeError, KeyError) as _exc:
+    logger.error(
+        "Failed to load sign lexicon from %s: %s. "
+        "Make sure backend/data/sign_lexicon.json exists and is valid.",
+        LEXICON_PATH,
+        _exc,
+    )
+    raise

@@ -4,12 +4,16 @@ Uses HandLandmarker from mediapipe.tasks for hand keypoint extraction.
 Supports both rule-based and ML-based gesture classification.
 """
 
-import cv2
-import numpy as np
+from __future__ import annotations
+
+import logging
 import pickle
-import os
 import time
 from collections import deque
+from pathlib import Path
+
+import cv2
+import numpy as np
 
 try:
     import mediapipe as mp
@@ -21,13 +25,16 @@ except ImportError:
     mp_python = None
     mp_vision = None
 
+
+logger = logging.getLogger(__name__)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Constants
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Base path for model files
-MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
-HAND_LANDMARKER_MODEL = os.path.join(MODEL_DIR, 'hand_landmarker.task')
+MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
+HAND_LANDMARKER_MODEL = MODEL_DIR / "hand_landmarker.task"
 
 # Dynamic gesture vocabulary
 DYNAMIC_GESTURES = {
@@ -42,6 +49,11 @@ DYNAMIC_GESTURES = {
     'pinched':     'What? / Что? / Nima?',
     'call_me':     'Call me / Позвони / Qo\'ng\'iroq qil',
 }
+
+# Confidence baselines for rule-based dynamic detection.  The actual value
+# is adjusted by the stability of the landmark buffer (see _dynamic_confidence).
+_DYNAMIC_CONFIDENCE_BASE = 0.75
+_DYNAMIC_CONFIDENCE_MAX = 0.95
 
 # Hand connection pairs for drawing (21 landmarks)
 HAND_CONNECTIONS = [
@@ -64,29 +76,29 @@ class GestureEngine:
     Falls back to OpenCV-only processing if model file is not found.
     """
 
-    def __init__(self, model_path: str = None):
+    def __init__(self, model_path: str | None = None) -> None:
         self.landmarker = None
         self.static_model = None  # sklearn model
         self._init_landmarker()
 
         # Load optional sklearn classifier
-        if model_path and os.path.exists(model_path):
+        if model_path and Path(model_path).exists():
             try:
                 with open(model_path, 'rb') as f:
-                    self.static_model = pickle.load(f)
-                print(f"[Engine] Loaded sklearn model from {model_path}")
-            except Exception as e:
-                print(f"[Engine] Could not load sklearn model: {e}")
+                    self.static_model = pickle.load(f)  # noqa: S301
+                logger.info("Loaded sklearn model from %s", model_path)
+            except Exception:
+                logger.warning("Could not load sklearn model from %s", model_path, exc_info=True)
 
         # Motion buffer for dynamic gestures
-        self.landmark_buffer = deque(maxlen=30)
-        self.last_gesture = None
+        self.landmark_buffer: deque[np.ndarray] = deque(maxlen=30)
+        self.last_gesture: str | None = None
         self.gesture_hold_frames = 0
         self.HOLD_THRESHOLD = 12
 
         # Word building
-        self.word_buffer = []
-        self.last_letter_time = 0
+        self.word_buffer: list[str] = []
+        self.last_letter_time = 0.0
         self.LETTER_PAUSE = 1.5
 
     @property
@@ -103,21 +115,19 @@ class GestureEngine:
         """True when MediaPipe landmarks are available for recognition."""
         return self.landmarker is not None
 
-    def _init_landmarker(self):
+    def _init_landmarker(self) -> None:
         """Initialize MediaPipe HandLandmarker from model file."""
         if mp is None:
-            print("[Engine] MediaPipe is not installed")
-            print("[Engine] Running in OpenCV-only mode (rule-based detection)")
+            logger.warning("MediaPipe is not installed — running in OpenCV-only mode")
             return
 
         model_path = HAND_LANDMARKER_MODEL
-        if not os.path.exists(model_path):
-            print(f"[Engine] Model not found at {model_path}")
-            print("[Engine] Running in OpenCV-only mode (rule-based detection)")
+        if not model_path.exists():
+            logger.warning("Model not found at %s — running in OpenCV-only mode", model_path)
             return
 
         try:
-            base_options = mp_python.BaseOptions(model_asset_path=model_path)
+            base_options = mp_python.BaseOptions(model_asset_path=str(model_path))
             options = mp_vision.HandLandmarkerOptions(
                 base_options=base_options,
                 running_mode=mp_vision.RunningMode.IMAGE,
@@ -127,9 +137,9 @@ class GestureEngine:
                 min_tracking_confidence=0.5,
             )
             self.landmarker = mp_vision.HandLandmarker.create_from_options(options)
-            print("[Engine] HandLandmarker initialized successfully")
-        except Exception as e:
-            print(f"[Engine] HandLandmarker init failed: {e}")
+            logger.info("HandLandmarker initialized successfully")
+        except Exception:
+            logger.exception("HandLandmarker init failed")
             self.landmarker = None
 
     def extract_landmarks_array(self, hand_landmarks) -> np.ndarray:
@@ -163,6 +173,22 @@ class GestureEngine:
                 cv2.circle(annotated, (x, y), size, color, -1)
 
         return annotated
+
+    @staticmethod
+    def _dynamic_confidence(landmarks_seq: list[np.ndarray]) -> float:
+        """Estimate confidence from landmark stability across the buffer.
+
+        A longer, more stable sequence yields higher confidence than a short
+        or jittery one.  The result is clamped to
+        [_DYNAMIC_CONFIDENCE_BASE, _DYNAMIC_CONFIDENCE_MAX].
+        """
+        length_factor = min(len(landmarks_seq) / 20.0, 1.0)
+        # Measure wrist position stability (lower variance = higher confidence)
+        wrist_positions = np.array([lm[:3] for lm in landmarks_seq])
+        variance = float(np.var(wrist_positions, axis=0).sum())
+        stability_factor = max(1.0 - variance * 5.0, 0.0)
+        raw = _DYNAMIC_CONFIDENCE_BASE + 0.2 * length_factor * stability_factor
+        return min(raw, _DYNAMIC_CONFIDENCE_MAX)
 
     def detect_dynamic_gesture(self, landmarks_seq: list) -> str | None:
         """Rule-based dynamic gesture detection from landmark sequence."""
@@ -307,8 +333,7 @@ class GestureEngine:
         if not idx and mid and ring and pinky:
             return 'F', 0.75
         if thumb_open and not idx and not mid and not ring and not pinky:
-            return 'A', 0.50 # fallback for closed fist with thumb out
-
+            return 'A', 0.50  # fallback for closed fist with thumb out
 
         return 'UNKNOWN', 0.30
 
@@ -354,11 +379,12 @@ class GestureEngine:
                     self.landmark_buffer.append(lm_array)
 
                     # Try dynamic first
-                    dyn = self.detect_dynamic_gesture(list(self.landmark_buffer))
+                    buffer_list = list(self.landmark_buffer)
+                    dyn = self.detect_dynamic_gesture(buffer_list)
                     if dyn:
                         result.update({
                             'gesture': dyn,
-                            'confidence': 0.87,
+                            'confidence': self._dynamic_confidence(buffer_list),
                             'type': 'dynamic',
                             'translation': DYNAMIC_GESTURES.get(dyn, dyn)
                         })
@@ -376,8 +402,8 @@ class GestureEngine:
                 else:
                     self.landmark_buffer.clear()
 
-            except Exception as e:
-                print(f"[Engine] Detection error: {e}")
+            except Exception:
+                logger.exception("Detection error")
         else:
             # OpenCV-only mode: detect skin regions (fallback)
             result = self._opencv_fallback(frame, result, include_annotated_frame)
@@ -436,6 +462,7 @@ class GestureEngine:
                         'translation': translation
                     })
 
+        # annotated is None when include_annotated_frame is False — expected.
         result['annotated_frame'] = annotated
         return result
 
@@ -469,7 +496,7 @@ class GestureEngine:
         except Exception:
             return 0
 
-    def _update_word_buffer(self, letter: str, conf: float):
+    def _update_word_buffer(self, letter: str, conf: float) -> None:
         """Accumulate letters into words based on hold duration."""
         now = time.time()
         if letter == self.last_gesture:
@@ -487,13 +514,13 @@ class GestureEngine:
             self.gesture_hold_frames = 0
         self.last_gesture = letter
 
-    def clear_word(self):
+    def clear_word(self) -> None:
         """Clear accumulated word buffer."""
         self.word_buffer.clear()
         self.last_gesture = None
         self.gesture_hold_frames = 0
 
-    def release(self):
+    def release(self) -> None:
         """Release resources."""
         if self.landmarker:
             try:
@@ -507,32 +534,35 @@ class GestureEngine:
 # ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    print("Testing GestureEngine...")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logger.info("Testing GestureEngine...")
     engine = GestureEngine()
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
-        print("No camera found!")
+        logger.error("No camera found!")
     else:
-        print("Press Q to quit")
+        logger.info("Press Q to quit")
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
             frame = cv2.flip(frame, 1)
-            res = engine.process_frame(frame)
+            res = engine.process_frame(frame, include_annotated_frame=True)
 
-            cv2.putText(res['annotated_frame'],
-                        f"Gesture: {res['gesture']} ({res['confidence']:.0%})",
-                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            cv2.putText(res['annotated_frame'],
-                        f"Translation: {res['translation']}",
-                        (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 200, 0), 2)
-            cv2.putText(res['annotated_frame'],
-                        f"Word: {res['word']}",
-                        (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 255, 0), 2)
+            annotated = res['annotated_frame']
+            if annotated is not None:
+                cv2.putText(annotated,
+                            f"Gesture: {res['gesture']} ({res['confidence']:.0%})",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                cv2.putText(annotated,
+                            f"Translation: {res['translation']}",
+                            (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 200, 0), 2)
+                cv2.putText(annotated,
+                            f"Word: {res['word']}",
+                            (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 255, 0), 2)
+                cv2.imshow('SignBridge Test', annotated)
 
-            cv2.imshow('SignBridge Test', res['annotated_frame'])
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 

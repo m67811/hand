@@ -70,6 +70,9 @@ docker compose up --build
 | `SIGNBRIDGE_MAX_WS_MESSAGE_BYTES` | Лимит WebSocket-сообщения | `1600000` |
 | `SIGNBRIDGE_MAX_FRAME_WIDTH` | Максимальная ширина кадра | `1280` |
 | `SIGNBRIDGE_MAX_FRAME_HEIGHT` | Максимальная высота кадра | `720` |
+| `SIGNBRIDGE_MAX_AUDIO_BYTES` | Максимальный размер TTS-аудио | `4000000` |
+| `SIGNBRIDGE_GESTURE_FRAME_INTERVAL` | Минимальный интервал между кадрами жестов (сек) | `0.0667` |
+| `SIGNBRIDGE_AVATAR_REQUEST_INTERVAL` | Минимальный интервал между запросами аватара (сек) | `0.35` |
 
 Полный шаблон переменных находится в [.env.example](.env.example).
 
