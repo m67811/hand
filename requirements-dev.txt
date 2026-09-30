@@ -1,7 +1,7 @@
 -r requirements.txt
 
 # TestClient is an optional Starlette dependency in current FastAPI releases.
-httpx2>=2.13,<3.0
+httpx2>=2.13.1,<3.0
 
 # Rebuilds docs/SignBridge_presentation_ru.pptx from its local source.
 python-pptx>=1.0,<2.0
