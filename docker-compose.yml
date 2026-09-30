@@ -1,0 +1,12 @@
+services:
+  signbridge:
+    build: .
+    ports:
+      - "${SIGNBRIDGE_PORT:-8000}:8000"
+    environment:
+      SIGNBRIDGE_ENV: production
+      SIGNBRIDGE_CORS_ORIGINS: ${SIGNBRIDGE_CORS_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      SIGNBRIDGE_ENFORCE_WS_ORIGIN: ${SIGNBRIDGE_ENFORCE_WS_ORIGIN:-true}
+    volumes:
+      - ./models:/app/models
+    restart: unless-stopped

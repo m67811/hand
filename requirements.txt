@@ -1,13 +1,13 @@
-mediapipe>=1.0.0
-opencv-python>=4.8.0
-numpy>=1.24.0
-tensorflow>=2.12.0
-scikit-learn>=1.3.0
-gTTS>=2.3.0
-pygame>=2.5.0
-fastapi>=0.110.0
-uvicorn[standard]>=0.27.0
-websockets>=12.0
-pillow>=10.0.0
-pydantic>=2.0.0
-python-multipart>=0.0.9
+# Runtime dependencies for Python 3.10+.
+# TensorFlow and pygame are not required for normal web-server operation.
+# Keeping the runtime set small makes the first launch more reliable.
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0
+# MediaPipe 1.x currently ships a Windows wheel. The 0.10 Tasks API is used
+# on Linux and macOS so Docker and CI remain installable from the same file.
+mediapipe>=1.0.0,<2.0; sys_platform == "win32"
+mediapipe>=0.10.14,<0.11; sys_platform != "win32"
+opencv-contrib-python>=4.8,<5.0
+numpy>=1.24,<3.0
+scikit-learn>=1.3,<2.0
+gTTS>=2.3,<3.0

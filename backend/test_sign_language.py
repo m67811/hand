@@ -2,7 +2,7 @@
 
 import unittest
 
-from sign_language import translator
+from backend.sign_language import translator
 
 
 class SignLanguagePlannerTests(unittest.TestCase):

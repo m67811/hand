@@ -3,13 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SignBridge — Платформа перевода жестового языка</title>
-  <meta name="description" content="SignBridge: AI платформа для двустороннего перевода жестового языка в реальном времени. Распознавание жестов глухонемых и перевод речи в жесты." />
+  <title>SignBridge - жестовый ассистент</title>
+  <meta name="description" content="SignBridge: учебная платформа распознавания жестов и построения плана жестовой визуализации текста." />
+  <meta name="theme-color" content="#080b14" />
+  <meta name="application-name" content="SignBridge" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
   <!-- ── Animated Background ── -->
   <div class="bg-grid"></div>
   <div class="orb orb-1"></div>
@@ -26,21 +32,21 @@
           <span class="logo-sub">НИТУ МИСИС • Кафедра ИТиАТПП</span>
         </div>
       </div>
-      <nav class="nav">
-        <button class="nav-btn active" data-tab="detect" onclick="switchTab('detect')">
+      <nav class="nav" role="tablist" aria-label="Разделы приложения">
+        <button class="nav-btn active" id="tab-button-detect" type="button" role="tab" aria-selected="true" aria-controls="tab-detect" data-tab="detect" onclick="switchTab('detect')">
           <span class="nav-icon">📷</span> Распознавание
         </button>
-        <button class="nav-btn" data-tab="avatar" onclick="switchTab('avatar')">
+        <button class="nav-btn" id="tab-button-avatar" type="button" role="tab" aria-selected="false" aria-controls="tab-avatar" data-tab="avatar" onclick="switchTab('avatar')">
           <span class="nav-icon">🤖</span> Аватар
         </button>
-        <button class="nav-btn" data-tab="dict" onclick="switchTab('dict')">
+        <button class="nav-btn" id="tab-button-dict" type="button" role="tab" aria-selected="false" aria-controls="tab-dict" data-tab="dict" onclick="switchTab('dict')">
           <span class="nav-icon">📖</span> Словарь
         </button>
-        <button class="nav-btn" data-tab="about" onclick="switchTab('about')">
+        <button class="nav-btn" id="tab-button-about" type="button" role="tab" aria-selected="false" aria-controls="tab-about" data-tab="about" onclick="switchTab('about')">
           <span class="nav-icon">ℹ️</span> О проекте
         </button>
       </nav>
-      <div class="status-indicator" id="status-indicator">
+      <div class="status-indicator" id="status-indicator" role="status" aria-live="polite">
         <div class="status-dot" id="status-dot"></div>
         <span id="status-text">Подключение...</span>
       </div>
@@ -50,13 +56,13 @@
   <!-- ══════════════════════════════════════════ -->
   <!-- TAB 1: Gesture Detection (Sign → Text)    -->
   <!-- ══════════════════════════════════════════ -->
-  <main class="main">
+  <main class="main" id="main-content" tabindex="-1">
 
     <!-- DETECT TAB -->
-    <section class="tab-section active" id="tab-detect">
+    <section class="tab-section active workspace-section" id="tab-detect" role="tabpanel" aria-labelledby="tab-button-detect">
       <div class="section-header">
         <h1 class="section-title">Жест → Текст / Речь</h1>
-        <p class="section-desc">Покажите жест на камеру — система распознает и озвучит его</p>
+        <p class="section-desc">Покажите жест на камеру - система распознает и озвучит его</p>
       </div>
 
       <div class="detect-layout">
@@ -83,7 +89,7 @@
             <!-- Live overlay -->
             <div class="live-badge hidden" id="live-badge">● LIVE</div>
             <div class="gesture-overlay" id="gesture-overlay">
-              <div class="detected-gesture" id="detected-gesture">—</div>
+              <div class="detected-gesture" id="detected-gesture">-</div>
               <div class="confidence-bar-wrap">
                 <div class="confidence-bar" id="confidence-bar"></div>
               </div>
@@ -93,7 +99,7 @@
           <div class="hints">
             <div class="hint-chip">👋 Держите руку в кадре</div>
             <div class="hint-chip">💡 Хорошее освещение</div>
-            <div class="hint-chip">📏 30–60 см от камеры</div>
+            <div class="hint-chip">📏 30-60 см от камеры</div>
           </div>
         </div>
 
@@ -107,14 +113,14 @@
           <!-- Current gesture -->
           <div class="result-card" id="gesture-card">
             <div class="result-label">Текущий жест</div>
-            <div class="result-value" id="result-gesture">—</div>
+            <div class="result-value" id="result-gesture">-</div>
             <div class="result-meta" id="result-type">Ожидание...</div>
           </div>
 
           <!-- Translation -->
           <div class="result-card highlight-card">
             <div class="result-label">Перевод</div>
-            <div class="result-value translation-value" id="result-translation">—</div>
+            <div class="result-value translation-value" id="result-translation">-</div>
           </div>
 
           <!-- Accumulated word -->
@@ -155,16 +161,38 @@
             </div>
           </div>
         </div>
+
+        <!-- Translation plan mirror for the recognition workspace -->
+        <div class="panel detect-plan-panel">
+          <div class="panel-header">
+            <h2>🧭 План перевода</h2>
+          </div>
+
+          <section class="translation-plan" aria-live="polite" aria-label="План перевода">
+            <div class="translation-plan-header">
+              <span>План перевода</span>
+              <span class="coverage-badge" id="detect-translation-coverage">-</span>
+            </div>
+            <div class="translation-meta" id="detect-translation-meta">Введите текст, чтобы увидеть глоссы и покрытие словаря.</div>
+            <div class="gloss-list" id="detect-gloss-list"></div>
+            <div class="unknown-words" id="detect-unknown-words"></div>
+          </section>
+
+          <div class="sequence-display" id="detect-sequence-display">
+            <div class="seq-label">Последовательность:</div>
+            <div class="seq-chips" id="detect-seq-chips"></div>
+          </div>
+        </div>
       </div>
     </section>
 
     <!-- ══════════════════════════════════════════ -->
     <!-- TAB 2: Avatar (Text → Sign)              -->
     <!-- ══════════════════════════════════════════ -->
-    <section class="tab-section" id="tab-avatar">
+    <section class="tab-section workspace-section" id="tab-avatar" role="tabpanel" aria-labelledby="tab-button-avatar">
       <div class="section-header">
         <h1 class="section-title">Текст → Жестовый аватар</h1>
-        <p class="section-desc">Введите текст — аватар покажет учебную визуализацию жестов. Доступны русский, English и o‘zbek.</p>
+        <p class="section-desc">Введите текст - аватар покажет учебную визуализацию жестов. Доступны русский, English и o‘zbek.</p>
       </div>
 
       <div class="avatar-layout">
@@ -173,6 +201,7 @@
           <div class="panel-header">
             <h2>✏️ Введите текст</h2>
           </div>
+          <label class="sr-only" for="avatar-input">Текст для жестовой визуализации</label>
           <textarea
             id="avatar-input"
             class="text-input"
@@ -192,7 +221,7 @@
             </div>
             
             <div class="action-buttons">
-              <button class="btn btn-primary btn-icon" id="btn-mic" onclick="toggleMic()" title="Голосовой ввод">
+              <button class="btn btn-primary btn-icon" id="btn-mic" onclick="toggleMic()" title="Голосовой ввод" aria-label="Голосовой ввод">
                 🎤
               </button>
               <button class="btn btn-accent btn-large" style="flex: 1;" onclick="sendToAvatar()">
@@ -223,7 +252,7 @@
             <div class="avatar-status" id="avatar-status">Готов</div>
           </div>
 
-          <div class="avatar-stage" id="avatar-stage">
+          <div class="avatar-stage" id="avatar-stage" aria-live="polite">
             <canvas id="avatar-canvas" width="400" height="400"></canvas>
             <div class="avatar-idle" id="avatar-idle">
               <div class="avatar-idle-icon">🤟</div>
@@ -233,15 +262,15 @@
 
           <!-- Current gesture display -->
           <div class="avatar-gesture-info" id="avatar-gesture-info">
-            <div class="current-sign" id="current-sign">—</div>
+              <div class="current-sign" id="current-sign">-</div>
             <div class="sign-label" id="sign-label">Жест</div>
           </div>
-          <p class="avatar-note">Аватар показывает 50+ распространённых слов и фраз; незнакомые слова отображаются по буквам.</p>
+          <p class="avatar-note">Аватар показывает распространённые слова и фразы; незнакомые слова отображаются по буквам. Это учебная визуализация, а не сертифицированный перевод.</p>
 
           <section class="translation-plan" aria-live="polite" aria-label="План перевода">
             <div class="translation-plan-header">
               <span>План перевода</span>
-              <span class="coverage-badge" id="translation-coverage">—</span>
+              <span class="coverage-badge" id="translation-coverage">-</span>
             </div>
             <div class="translation-meta" id="translation-meta">Введите текст, чтобы увидеть глоссы и покрытие словаря.</div>
             <div class="gloss-list" id="gloss-list"></div>
@@ -265,7 +294,7 @@
     <!-- ══════════════════════════════════════════ -->
     <!-- TAB 3: Dictionary (Словарь жестов)       -->
     <!-- ══════════════════════════════════════════ -->
-    <section class="tab-section" id="tab-dict">
+    <section class="tab-section" id="tab-dict" role="tabpanel" aria-labelledby="tab-button-dict">
       <div class="section-header">
         <h1 class="section-title">Словарь жестов</h1>
         <p class="section-desc">Изучайте жесты и тренируйтесь перед камерой</p>
@@ -477,7 +506,7 @@
     <!-- ══════════════════════════════════════════ -->
     <!-- TAB 4: About                             -->
     <!-- ══════════════════════════════════════════ -->
-    <section class="tab-section" id="tab-about">
+    <section class="tab-section" id="tab-about" role="tabpanel" aria-labelledby="tab-button-about">
       <div class="section-header">
         <h1 class="section-title">О проекте SignBridge</h1>
         <p class="section-desc">AI платформа двустороннего перевода жестового языка</p>
@@ -487,35 +516,35 @@
         <div class="about-card">
           <div class="about-icon">🎯</div>
           <h3>Цель</h3>
-          <p>Устранить коммуникационный барьер между глухонемыми людьми и остальным обществом с помощью ИИ и компьютерного зрения.</p>
+          <p>Помочь в обучении и диалоге с помощью компьютерного зрения, наглядного словаря и проверяемого плана жестов.</p>
         </div>
         <div class="about-card">
           <div class="about-icon">🧠</div>
           <h3>Технологии</h3>
-          <p>MediaPipe Holistic для детекции скелета руки, RandomForest/LSTM для классификации жестов, TTS для синтеза речи.</p>
+          <p>MediaPipe Hand Landmarker для ключевых точек руки, OpenCV для обработки кадров, необязательный scikit-learn классификатор и TTS.</p>
         </div>
         <div class="about-card">
           <div class="about-icon">🔄</div>
-          <h3>Двусторонний перевод</h3>
+          <h3>Два рабочих сценария</h3>
           <p>
-            <strong>→ Жест в текст:</strong> Распознаёт жесты глухонемого и переводит в текст/речь<br/>
-            <strong>→ Текст в жест:</strong> Переводит речь/текст в жесты через 3D аватар
+            <strong>→ Жест в текст:</strong> Находит демонстрационные жесты и буквы перед камерой, выводит текст и речь<br/>
+            <strong>→ Текст в жест:</strong> Строит план глосс и показывает его Canvas-аватаром
           </p>
         </div>
         <div class="about-card">
           <div class="about-icon">🌍</div>
           <h3>Языки</h3>
-          <p>Поддержка ASL (американский жестовый язык), английского, русского и узбекского языков вывода.</p>
+          <p>Планировщик принимает английский, русский и узбекский текст. Буквы распознаются в учебном наборе ASL.</p>
         </div>
         <div class="about-card">
           <div class="about-icon">📊</div>
           <h3>Архитектура</h3>
-          <p>Python FastAPI backend + WebSocket real-time + MediaPipe CV + JS/HTML5 frontend + TTS синтез</p>
+          <p>Python FastAPI API, WebSocket в реальном времени, MediaPipe, JavaScript, PWA и синтез речи.</p>
         </div>
         <div class="about-card">
           <div class="about-icon">🏫</div>
           <h3>Применение</h3>
-          <p>Образование, здравоохранение, общественные места — везде где нужна коммуникация с глухонемыми людьми.</p>
+          <p>Образование, здравоохранение и общественные места - везде, где нужна более доступная коммуникация для глухих и слабослышащих людей.</p>
         </div>
       </div>
 
@@ -523,9 +552,9 @@
       <div class="tech-stack">
         <h3>Технологический стек</h3>
         <div class="tech-list">
-          <div class="tech-item"><span class="tech-badge python">Python 3.11</span></div>
+          <div class="tech-item"><span class="tech-badge python">Python 3.10+</span></div>
           <div class="tech-item"><span class="tech-badge mediapipe">MediaPipe</span></div>
-          <div class="tech-item"><span class="tech-badge tf">TensorFlow</span></div>
+          <div class="tech-item"><span class="tech-badge pwa">PWA</span></div>
           <div class="tech-item"><span class="tech-badge sk">Scikit-learn</span></div>
           <div class="tech-item"><span class="tech-badge fastapi">FastAPI</span></div>
           <div class="tech-item"><span class="tech-badge ws">WebSocket</span></div>
@@ -544,12 +573,12 @@
           <div class="about-card" style="border-top: 3px solid #3b82f6;">
             <div class="about-icon">📱</div>
             <h3>Мобильное приложение</h3>
-            <p>Упаковка платформы в кроссплатформенное мобильное приложение (React Native / Flutter) для того, чтобы глухонемой человек мог пользоваться переводчиком прямо со смартфона на улице или в магазине.</p>
+            <p>Упаковка платформы в кроссплатформенное мобильное приложение (React Native / Flutter), чтобы пользоваться учебным помощником прямо со смартфона.</p>
           </div>
           <div class="about-card" style="border-top: 3px solid #8b5cf6;">
             <div class="about-icon">🧑‍🎨</div>
             <h3>Реалистичный 3D Аватар</h3>
-            <p>Замена текущего Canvas-рендера на полноценный WebGL/Three.js 3D-аватар с лицевыми анимациями (мимикой), так как эмоции — важнейшая часть грамматики жестового языка.</p>
+            <p>Замена текущего Canvas-рендера на полноценный WebGL/Three.js 3D-аватар с лицевыми анимациями (мимикой), так как эмоции - важнейшая часть грамматики жестового языка.</p>
           </div>
           <div class="about-card" style="border-top: 3px solid #10b981;">
             <div class="about-icon">🧠</div>
@@ -564,7 +593,7 @@
           <div class="about-card" style="border-top: 3px solid #ec4899;">
             <div class="about-icon">🤖</div>
             <h3>Жестовый Ассистент (AI)</h3>
-            <p>Создание умного помощника (аналог Алисы или Siri) специально для глухонемых людей. Ассистент будет «видеть» жестовые команды через веб-камеру, управлять умным домом и отвечать на вопросы с помощью 3D-аватара.</p>
+            <p>Создание умного помощника для глухих и слабослышащих людей. Ассистент сможет распознавать жестовые команды через веб-камеру, управлять умным домом и отвечать через визуального аватара.</p>
           </div>
         </div>
       </div>

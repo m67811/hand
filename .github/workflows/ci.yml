@@ -1,0 +1,31 @@
+name: SignBridge CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m compileall -q backend
+      - run: python -m unittest discover -s backend -p "test_*.py" -v
+      - run: node --check frontend/app.js
+      - run: node --check frontend/avatar3d.js
+      - run: node --check frontend/service-worker.js
+
+  container:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --tag signbridge:test .

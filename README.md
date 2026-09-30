@@ -1,49 +1,123 @@
-# SignBridge 🤟
+# SignBridge
 
-**SignBridge** — это AI-платформа для двустороннего перевода жестового языка в реальном времени, разработанная для преодоления коммуникационных барьеров между глухонемыми людьми и остальным обществом.
+SignBridge - локальная веб-платформа для демонстрации распознавания жестов камерой и построения понятного плана жестовой визуализации из текста. Интерфейс работает на русском, английском и узбекском языках.
 
-## 🌟 Особенности проекта
+> Важно: это учебный прототип, а не сертифицированный переводчик жестового языка. Распознавание жестов и анимации нужно проверять вместе с носителями конкретного жестового языка. Не используйте результат для медицинских, юридических, экстренных или иных критичных решений.
 
-Платформа закрывает потребности сразу в двух направлениях:
+## Возможности
 
-1. **Жест → Текст / Речь**: С помощью компьютерного зрения (`MediaPipe Holistic`) система распознает статические знаки и динамические жесты глухонемого пользователя и автоматически озвучивает их (через Text-to-Speech) или выводит на экран как текст.
-2. **Текст / Речь → Жест**: Платформа переводит введенный текст (или сказанную речь) обратно в жесты с помощью 3D-анимаций / жестового аватара для глухонемых пользователей.
+- Распознавание руки в реальном времени через MediaPipe Hand Landmarker.
+- Демонстрационные статические буквы ASL, динамические жесты и накопление слова.
+- Текстовый план: глоссы, покрытие словаря, неизвестные и служебные слова.
+- Canvas-аватар с последовательностью жестов и озвучивание текста.
+- Адаптивный интерфейс без лишней вертикальной прокрутки на широком экране.
+- PWA-оболочка: приложение можно установить из поддерживаемого браузера, а статический интерфейс доступен офлайн после первого запуска.
+- Версионированное API, валидация входных данных, ограничения размеров кадров и WebSocket-сообщений.
 
-### 🧠 Технологический стек
-- **Computer Vision & ML**: MediaPipe Tasks API v1.0, OpenCV, Scikit-learn, TensorFlow.
-- **Backend**: Python 3.11, FastAPI, WebSockets (real-time).
-- **Frontend**: HTML5, CSS3 (Glassmorphism), Vanilla JavaScript, Canvas API.
-- **Speech**: gTTS / pyttsx3.
+## Быстрый запуск на Windows
 
-### 🌍 Мультиязычность
-Система поддерживает локализацию и перевод для:
-- Английского языка (EN)
-- Русского языка (RU)
-- Узбекского языка (UZ)
+Нужен Python 3.10 или новее. На новом компьютере достаточно скачать проект и запустить:
 
-## 🚀 Как запустить проект
-
-1. Склонируйте репозиторий:
-```bash
+```powershell
 git clone https://github.com/m67811/hand.git
 cd hand
+.\start.bat
 ```
 
-2. Запустите платформу на Windows (установит зависимости, загрузит модели и откроет браузер автоматически):
-```bash
-start.bat
+`start.bat` сам создаёт локальное окружение `.venv`, устанавливает зависимости без прав администратора, скачивает модель рук, выбирает свободный порт начиная с `8000` и открывает браузер только после готовности сервера.
+
+Если `8000` занят, сервер перейдёт на `8001`, затем на следующий свободный порт. Чтобы начать поиск с другого порта, в PowerShell выполните:
+
+```powershell
+$env:SIGNBRIDGE_PORT = 8010
+.\start.bat
 ```
 
-> **Примечание:** Если вы запускаете не через `start.bat`, перед запуском необходимо скачать модель `hand_landmarker.task` в папку `models/` (см. код скрипта `start.bat` для прямой ссылки скачивания).
+## Ручной запуск
 
-## 📁 Структура проекта
+Подходит для разработки или систем без `.bat`-файлов:
 
-- `backend/`
-  - `server.py` — FastAPI и WebSocket сервер.
-  - `gesture_engine.py` — логика компьютерного зрения и классификации жестов (MediaPipe).
-  - `tts_engine.py` — логика преобразования текста в речь и подготовки анимаций для аватара.
-- `frontend/`
-  - `index.html` — пользовательский веб-интерфейс (Распознавание / Аватар / О проекте).
-  - `style.css` — стили оформления (темная тема).
-  - `app.js` — логика взаимодействия с сервером и отрисовка аватара.
-- `models/` — директория для ML моделей (скачивается автоматически при первом запуске).
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m backend.download_models
+.\.venv\Scripts\python.exe -m uvicorn backend.server:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Откройте `http://localhost:8000`. Интерактивная документация API доступна по адресу `http://localhost:8000/docs`.
+
+Для камеры браузер требует защищённый контекст: `localhost` подходит для разработки, а для удалённого сервера нужен HTTPS.
+
+## Запуск в Docker
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+Перед публикацией измените в `.env` `SIGNBRIDGE_CORS_ORIGINS` на настоящий адрес сайта и включите `SIGNBRIDGE_ENFORCE_WS_ORIGIN=true`.
+
+## Настройка среды
+
+| Переменная | Назначение | Значение по умолчанию |
+| --- | --- | --- |
+| `SIGNBRIDGE_PORT` | Начальный порт для `start.bat` и Docker | `8000` |
+| `SIGNBRIDGE_NO_BROWSER` | Не открывать браузер из `start.bat` | не задана |
+| `SIGNBRIDGE_ENV` | Режим работы API | `development` |
+| `SIGNBRIDGE_CORS_ORIGINS` | Разрешённые источники браузера через запятую | локальные адреса на `8000` |
+| `SIGNBRIDGE_ENFORCE_WS_ORIGIN` | Проверять Origin в WebSocket | `true` в production, `false` в development |
+| `SIGNBRIDGE_MAX_TEXT_LENGTH` | Максимальная длина входного текста | `500` |
+| `SIGNBRIDGE_MAX_WS_MESSAGE_BYTES` | Лимит WebSocket-сообщения | `1600000` |
+| `SIGNBRIDGE_MAX_FRAME_WIDTH` | Максимальная ширина кадра | `1280` |
+| `SIGNBRIDGE_MAX_FRAME_HEIGHT` | Максимальная высота кадра | `720` |
+
+Полный шаблон переменных находится в [.env.example](.env.example).
+
+## API
+
+| Метод | Адрес | Назначение |
+| --- | --- | --- |
+| `GET` | `/api/v1/health` | Статус приложения и режима распознавания |
+| `GET` | `/api/v1/vocabulary` | Доступные глоссы и словарь |
+| `POST` | `/api/v1/translate` | План анимации для `{ "text", "lang" }` |
+| `POST` | `/api/v1/tts` | Озвучивание текста в MP3 |
+| `POST` | `/api/v1/clear-word` | Очистка накопленного слова |
+| `WS` | `/ws/gesture` | Кадры JPEG и результат жеста |
+| `WS` | `/ws/avatar` | План анимации и необязательное аудио |
+
+Старые маршруты без `/api/v1` сохранены для совместимости.
+
+## Структура
+
+```text
+backend/       FastAPI, WebSocket, распознавание, планировщик и TTS
+frontend/      HTML, CSS, JavaScript, PWA-файлы и Canvas-аватар
+models/        Скачиваемые модели, не попадают в Git
+.github/       Проверки CI
+Dockerfile     Контейнерный запуск
+start.bat      Автоматический запуск на Windows
+```
+
+## Проверки
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m compileall -q backend
+.\.venv\Scripts\python.exe -m unittest discover -s backend -p "test_*.py" -v
+node --check frontend/app.js
+node --check frontend/avatar3d.js
+node --check frontend/service-worker.js
+```
+
+## Технологии
+
+- Python, FastAPI, Uvicorn и WebSocket.
+- MediaPipe Tasks, OpenCV и необязательный классификатор scikit-learn.
+- Vanilla JavaScript, Canvas API, Service Worker и Web Speech API.
+- gTTS для серверного озвучивания. При недоступности сервера браузер использует встроенный синтез речи.
+
+## Полезные материалы
+
+- [MediaPipe Gesture Recognizer](https://developers.google.com/edge/mediapipe/solutions/vision/gesture_recognizer)
+- [Руководство MDN по PWA](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/What_is_a_progressive_web_app)
+- [Развёртывание FastAPI](https://fastapi.tiangolo.com/deployment/)

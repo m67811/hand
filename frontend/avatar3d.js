@@ -1,5 +1,5 @@
 // Procedural WebGL signing avatar. It has two articulated arms and five
-// independently bent fingers per hand, so gesture records control joints—not
+// independently bent fingers per hand, so gesture records control joints-not
 // a flat illustration. The main app falls back to Canvas if this module fails.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js';
 

@@ -1,16 +1,20 @@
 """
-SignBridge — Text-to-Speech Engine
+SignBridge - Text-to-Speech Engine
 Converts text/gestures to speech output (multi-language support).
 Also maps text to sign language avatar animations.
 """
 
+import logging
 import os
-import io
 import threading
 import tempfile
+import uuid
 from pathlib import Path
 
-from sign_language import translator
+from .sign_language import translator
+
+
+logger = logging.getLogger(__name__)
 
 # TTS backends (tries in order)
 TTS_BACKEND = None
@@ -21,7 +25,7 @@ def _init_tts():
     try:
         from gtts import gTTS
         TTS_BACKEND = 'gtts'
-        print("[TTS] Using gTTS (online)")
+        logger.info("Using gTTS backend")
         return
     except ImportError:
         pass
@@ -29,12 +33,12 @@ def _init_tts():
     try:
         import pyttsx3
         TTS_BACKEND = 'pyttsx3'
-        print("[TTS] Using pyttsx3 (offline)")
+        logger.info("Using pyttsx3 backend")
         return
     except ImportError:
         pass
 
-    print("[TTS] WARNING: No TTS backend available!")
+    logger.warning("No text-to-speech backend is available")
 
 
 _init_tts()
@@ -111,7 +115,7 @@ def detect_language(text: str) -> str:
     return translator.detect_language(text)
 
 
-def text_to_speech(text: str, lang: str = None, output_path: str = None) -> str:
+def text_to_speech(text: str, lang: str | None = None, output_path: str | None = None) -> str | None:
     """
     Convert text to speech audio file.
     Returns path to the generated .mp3 file.
@@ -131,16 +135,16 @@ def text_to_speech(text: str, lang: str = None, output_path: str = None) -> str:
     gtts_lang = gtts_lang_map.get(lang, 'en')
 
     if output_path is None:
-        output_path = os.path.join(tempfile.gettempdir(), 'signbridge_tts.mp3')
+        output_path = str(Path(tempfile.gettempdir()) / f"signbridge_tts_{uuid.uuid4().hex}.mp3")
 
     if TTS_BACKEND == 'gtts':
         try:
             from gtts import gTTS
             tts = gTTS(text=text, lang=gtts_lang, slow=False)
             tts.save(output_path)
-            return output_path
+            return output_path if Path(output_path).exists() else None
         except Exception as e:
-            print(f"[TTS] gTTS error: {e}, trying pyttsx3...")
+            logger.warning("gTTS failed, trying the offline backend: %s", e)
             return _pyttsx3_speak(text, output_path)
 
     elif TTS_BACKEND == 'pyttsx3':
@@ -149,16 +153,16 @@ def text_to_speech(text: str, lang: str = None, output_path: str = None) -> str:
     return None
 
 
-def _pyttsx3_speak(text: str, output_path: str) -> str:
+def _pyttsx3_speak(text: str, output_path: str) -> str | None:
     """Fallback TTS using pyttsx3."""
     try:
         import pyttsx3
         engine = pyttsx3.init()
         engine.save_to_file(text, output_path)
         engine.runAndWait()
-        return output_path
+        return output_path if Path(output_path).exists() else None
     except Exception as e:
-        print(f"[TTS] pyttsx3 error: {e}")
+        logger.warning("pyttsx3 failed: %s", e)
         return None
 
 

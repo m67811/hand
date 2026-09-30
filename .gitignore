@@ -30,6 +30,15 @@ venv.bak/
 # Project specific
 models/hand_landmarker.task
 models/*.pkl
+models/*.download
+
+# Tooling
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+coverage.xml
 
 # OS
 .DS_Store

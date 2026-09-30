@@ -1,5 +1,5 @@
 """
-SignBridge — Gesture Recognition Engine (MediaPipe Tasks API v1.0)
+SignBridge - Gesture Recognition Engine (MediaPipe Tasks API)
 Uses HandLandmarker from mediapipe.tasks for hand keypoint extraction.
 Supports both rule-based and ML-based gesture classification.
 """
@@ -11,9 +11,15 @@ import os
 import time
 from collections import deque
 
-import mediapipe as mp
-from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.python import vision as mp_vision
+try:
+    import mediapipe as mp
+    from mediapipe.tasks import python as mp_python
+    from mediapipe.tasks.python import vision as mp_vision
+except ImportError:
+    # MediaPipe is optional: the engine has an OpenCV-only fallback mode.
+    mp = None
+    mp_python = None
+    mp_vision = None
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Constants
@@ -54,7 +60,7 @@ HAND_CONNECTIONS = [
 
 class GestureEngine:
     """
-    Real-time hand gesture recognition using MediaPipe Tasks API (v1.0).
+    Real-time hand gesture recognition using the MediaPipe Tasks API.
     Falls back to OpenCV-only processing if model file is not found.
     """
 
@@ -83,8 +89,27 @@ class GestureEngine:
         self.last_letter_time = 0
         self.LETTER_PAUSE = 1.5
 
+    @property
+    def recognition_mode(self) -> str:
+        """Return a UI-safe description of the active recognition pipeline."""
+        if self.landmarker and self.static_model:
+            return "mediapipe+sklearn"
+        if self.landmarker:
+            return "mediapipe-hand-landmarks"
+        return "opencv-fallback"
+
+    @property
+    def is_model_ready(self) -> bool:
+        """True when MediaPipe landmarks are available for recognition."""
+        return self.landmarker is not None
+
     def _init_landmarker(self):
         """Initialize MediaPipe HandLandmarker from model file."""
+        if mp is None:
+            print("[Engine] MediaPipe is not installed")
+            print("[Engine] Running in OpenCV-only mode (rule-based detection)")
+            return
+
         model_path = HAND_LANDMARKER_MODEL
         if not os.path.exists(model_path):
             print(f"[Engine] Model not found at {model_path}")

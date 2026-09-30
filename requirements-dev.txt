@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# TestClient is an optional Starlette dependency in current FastAPI releases.
+httpx2>=2.13,<3.0

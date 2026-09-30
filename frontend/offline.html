@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#080b14" />
+  <title>SignBridge - Нет подключения</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    body { min-height: 100vh; display: grid; place-items: center; margin: 0; background: #080b14; color: #f0f4ff; }
+    main { width: min(92vw, 36rem); padding: 2rem; border: 1px solid rgba(255,255,255,.12); border-radius: 1.25rem; background: #0d1220; text-align: center; }
+    h1 { color: #69ddff; } p { color: #aab4d0; line-height: 1.6; } button { padding: .75rem 1rem; border: 0; border-radius: .75rem; background: #00d4ff; color: #021018; font: inherit; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <p aria-hidden="true">🤟</p>
+    <h1>Нет подключения к серверу</h1>
+    <p>Интерфейс SignBridge сохранён на устройстве, но распознавание, перевод и озвучивание снова станут доступны после подключения к серверу.</p>
+    <button type="button" onclick="location.reload()">Повторить</button>
+  </main>
+</body>
+</html>

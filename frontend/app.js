@@ -1,17 +1,23 @@
 /**
- * SignBridge — Frontend Application
+ * SignBridge - Frontend Application
  * WebSocket client for real-time gesture detection + Avatar TTS animation
  */
 
 'use strict';
 
 // ── Configuration ──────────────────────────────────────────────────────────
+const isServedOverHttp = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+const serverOrigin = isServedOverHttp ? window.location.origin : 'http://localhost:8000';
+const websocketOrigin = serverOrigin.replace(/^http/, 'ws');
+
 const CONFIG = {
-  WS_GESTURE: 'ws://localhost:8000/ws/gesture',
-  WS_AVATAR:  'ws://localhost:8000/ws/avatar',
-  API_BASE:   'http://localhost:8000',
+  WS_GESTURE: `${websocketOrigin}/ws/gesture`,
+  WS_AVATAR:  `${websocketOrigin}/ws/avatar`,
+  API_BASE:   `${serverOrigin}/api/v1`,
   FRAME_INTERVAL: 80,     // ms between frames sent to server (≈12 fps)
   RECONNECT_DELAY: 2000,  // ms before reconnect attempt
+  MAX_CAPTURE_WIDTH: 960,
+  MAX_CAPTURE_HEIGHT: 720,
 };
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -20,12 +26,16 @@ const state = {
   stream: null,
   cameraRunning: false,
   frameTimer: null,
+  frameInFlight: false,
+  activeTab: 'detect',
+  isClosing: false,
 
   // WebSocket
   wsGesture: null,
   wsAvatar: null,
   wsConnected: false,
   reconnectTimer: null,
+  avatarReconnectTimer: null,
 
   // Detection
   currentLang: 'en',
@@ -54,9 +64,39 @@ const statusText    = $('status-text');
 // ── Init ───────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   initAvatarCanvas();
+  initializeTabs();
   connectWebSockets();
   drawAvatarIdle();
+  registerServiceWorker();
 });
+
+window.addEventListener('beforeunload', () => {
+  state.isClosing = true;
+  clearInterval(state.frameTimer);
+  clearTimeout(state.reconnectTimer);
+  clearTimeout(state.avatarReconnectTimer);
+  if (state.stream) state.stream.getTracks().forEach(track => track.stop());
+  state.wsGesture?.close();
+  state.wsAvatar?.close();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearInterval(state.frameTimer);
+    state.frameTimer = null;
+  } else if (state.cameraRunning && state.activeTab === 'detect' && !state.frameTimer) {
+    state.frameTimer = setInterval(captureAndSendFrame, CONFIG.FRAME_INTERVAL);
+  }
+});
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || !isServedOverHttp) return;
+  try {
+    await navigator.serviceWorker.register('/service-worker.js');
+  } catch (error) {
+    console.warn('Service worker registration failed:', error);
+  }
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // WebSocket Management
@@ -68,11 +108,14 @@ function connectWebSockets() {
 }
 
 function connectGestureWS() {
+  if (state.wsGesture && [WebSocket.OPEN, WebSocket.CONNECTING].includes(state.wsGesture.readyState)) return;
+
   try {
     state.wsGesture = new WebSocket(CONFIG.WS_GESTURE);
 
     state.wsGesture.onopen = () => {
       console.log('[WS] Gesture connected');
+      clearTimeout(state.reconnectTimer);
       setConnected(true);
       toast('✅ Сервер подключён', 'success');
     };
@@ -87,7 +130,7 @@ function connectGestureWS() {
     state.wsGesture.onclose = () => {
       console.log('[WS] Gesture disconnected');
       setConnected(false);
-      scheduleReconnect();
+      if (!state.isClosing) scheduleReconnect();
     };
 
     state.wsGesture.onerror = (e) => {
@@ -102,9 +145,14 @@ function connectGestureWS() {
 }
 
 function connectAvatarWS() {
+  if (state.wsAvatar && [WebSocket.OPEN, WebSocket.CONNECTING].includes(state.wsAvatar.readyState)) return;
+
   try {
     state.wsAvatar = new WebSocket(CONFIG.WS_AVATAR);
-    state.wsAvatar.onopen = () => console.log('[WS] Avatar connected');
+    state.wsAvatar.onopen = () => {
+      clearTimeout(state.avatarReconnectTimer);
+      console.log('[WS] Avatar connected');
+    };
     state.wsAvatar.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -112,8 +160,9 @@ function connectAvatarWS() {
       } catch (e) { console.error('Avatar WS parse error', e); }
     };
     state.wsAvatar.onclose = () => {
-      setTimeout(connectAvatarWS, CONFIG.RECONNECT_DELAY * 2);
+      if (!state.isClosing) scheduleAvatarReconnect();
     };
+    state.wsAvatar.onerror = error => console.error('[WS Avatar] Error:', error);
   } catch (e) {
     console.error('[WS Avatar] Failed:', e);
   }
@@ -140,8 +189,17 @@ function setConnected(connected) {
 
 async function startCamera() {
   try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Camera API is not supported by this browser.');
+    }
+
+    if (state.cameraRunning) stopCamera();
     state.stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480, facingMode: 'user' },
+      video: {
+        facingMode: 'user',
+        width: { ideal: CONFIG.MAX_CAPTURE_WIDTH, max: CONFIG.MAX_CAPTURE_WIDTH },
+        height: { ideal: CONFIG.MAX_CAPTURE_HEIGHT, max: CONFIG.MAX_CAPTURE_HEIGHT },
+      },
       audio: false
     });
 
@@ -160,13 +218,15 @@ async function startCamera() {
     state.cameraRunning = true;
 
     // Set canvas size to match video
-    video.addEventListener('loadedmetadata', () => {
+    video.onloadedmetadata = () => {
       canvasOverlay.width = video.videoWidth;
       canvasOverlay.height = video.videoHeight;
-    });
+    };
 
     // Start sending frames
-    state.frameTimer = setInterval(captureAndSendFrame, CONFIG.FRAME_INTERVAL);
+    if (!document.hidden && state.activeTab === 'detect') {
+      state.frameTimer = setInterval(captureAndSendFrame, CONFIG.FRAME_INTERVAL);
+    }
     toast('📷 Камера запущена', 'info');
 
   } catch (err) {
@@ -182,6 +242,8 @@ function stopCamera() {
   }
 
   clearInterval(state.frameTimer);
+  state.frameTimer = null;
+  state.frameInFlight = false;
   state.cameraRunning = false;
 
   video.srcObject = null;
@@ -204,28 +266,37 @@ function stopCamera() {
 // ══════════════════════════════════════════════════════════════════════════
 
 function captureAndSendFrame() {
-  if (!state.cameraRunning || !state.wsGesture ||
-      state.wsGesture.readyState !== WebSocket.OPEN) return;
+  if (!state.cameraRunning || state.activeTab !== 'detect' || !state.wsGesture ||
+      state.wsGesture.readyState !== WebSocket.OPEN || state.frameInFlight || document.hidden) return;
 
   const canvas = document.createElement('canvas');
-  canvas.width  = video.videoWidth  || 640;
-  canvas.height = video.videoHeight || 480;
+  const sourceWidth = video.videoWidth || 640;
+  const sourceHeight = video.videoHeight || 480;
+  const scale = Math.min(1, CONFIG.MAX_CAPTURE_WIDTH / sourceWidth, CONFIG.MAX_CAPTURE_HEIGHT / sourceHeight);
+  canvas.width = Math.round(sourceWidth * scale);
+  canvas.height = Math.round(sourceHeight * scale);
   const ctx = canvas.getContext('2d');
+  if (!ctx) return;
 
-  // Mirror the image (video is already mirrored via CSS, but for server we need original)
   ctx.drawImage(video, 0, 0);
+  state.frameInFlight = true;
 
   canvas.toBlob(blob => {
-    if (!blob) return;
+    if (!blob) {
+      state.frameInFlight = false;
+      return;
+    }
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64 = reader.result.split(',')[1];
-      if (state.wsGesture.readyState === WebSocket.OPEN) {
+      const base64 = typeof reader.result === 'string' ? reader.result.split(',')[1] : null;
+      if (base64 && state.wsGesture?.readyState === WebSocket.OPEN) {
         state.wsGesture.send(JSON.stringify({ type: 'frame', frame: base64 }));
       }
+      state.frameInFlight = false;
     };
+    reader.onerror = () => { state.frameInFlight = false; };
     reader.readAsDataURL(blob);
-  }, 'image/jpeg', 0.7);
+  }, 'image/jpeg', 0.72);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -234,8 +305,14 @@ function captureAndSendFrame() {
 
 function handleGestureResult(data) {
   if (!data || data.type === 'pong') return;
+  if (data.type === 'error') {
+    toast(data.message || 'Gesture processing error', 'error');
+    return;
+  }
 
-  const { gesture, confidence, type, translation, word, landmarks, annotated_frame } = data;
+  const { gesture, confidence, gesture_type, type: messageType, translation, word, annotated_frame } = data;
+  const type = gesture_type || (messageType === 'gesture_result' ? 'none' : messageType);
+  const confidenceValue = Number.isFinite(confidence) ? confidence : 0;
 
   // Draw annotated frame on overlay canvas
   if (annotated_frame) {
@@ -255,13 +332,13 @@ function handleGestureResult(data) {
 
     // Big gesture display overlay
     $('detected-gesture').textContent = gesture;
-    $('confidence-bar').style.width = (confidence * 100) + '%';
+    $('confidence-bar').style.width = (confidenceValue * 100) + '%';
 
     // Result panel
     $('result-gesture').textContent = gesture;
     $('result-type').textContent = type === 'dynamic'
-      ? `🌀 Динамический жест (${Math.round(confidence * 100)}%)`
-      : `✋ Статический знак (${Math.round(confidence * 100)}%)`;
+      ? `🌀 Динамический жест (${Math.round(confidenceValue * 100)}%)`
+      : `✋ Статический знак (${Math.round(confidenceValue * 100)}%)`;
 
     $('result-translation').textContent = displayTranslation || gesture;
 
@@ -278,7 +355,7 @@ function handleGestureResult(data) {
       setTimeout(() => { state.lastSpoken = null; }, 3000);
     }
   } else {
-    $('detected-gesture').textContent = '—';
+    $('detected-gesture').textContent = '-';
     $('confidence-bar').style.width = '0%';
   }
 
@@ -314,13 +391,21 @@ function addToHistory(gesture, translation) {
 
 function renderHistory() {
   const list = $('history-list');
+  list.replaceChildren();
   if (state.history.length === 0) {
-    list.innerHTML = '<div class="history-empty">История пуста</div>';
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'История пуста';
+    list.appendChild(empty);
     return;
   }
-  list.innerHTML = state.history.slice(0, 15).map(h =>
-    `<div class="history-item" title="${h.translation}">${h.gesture}</div>`
-  ).join('');
+  state.history.slice(0, 15).forEach(item => {
+    const historyItem = document.createElement('div');
+    historyItem.className = 'history-item';
+    historyItem.title = item.translation;
+    historyItem.textContent = item.gesture;
+    list.appendChild(historyItem);
+  });
 }
 
 function clearHistory() {
@@ -340,7 +425,7 @@ function speakWord() {
 
 function speakCurrentGesture() {
   const translation = $('result-translation').textContent.trim();
-  if (!translation || translation === '—') return;
+  if (!translation || translation === '-') return;
   speakText(translation, state.currentLang);
 }
 
@@ -352,19 +437,22 @@ async function speakText(text, lang) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, lang })
     });
-    const data = await res.json();
-    if (data.audio_base64) {
-      const audio = new Audio('data:audio/mp3;base64,' + data.audio_base64);
-      audio.play();
-    }
+    const data = await readApiResponse(res);
+    if (!data.audio_base64) throw new Error('Server did not return audio.');
+    const audio = new Audio('data:audio/mp3;base64,' + data.audio_base64);
+    await audio.play();
   } catch (e) {
     console.error('TTS error:', e);
-    // Fallback: browser TTS
+    toast('Серверное озвучивание недоступно, используется голос браузера', 'info');
     browserSpeak(text, lang);
   }
 }
 
 function browserSpeak(text, lang) {
+  if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+    toast('Озвучивание не поддерживается этим браузером', 'error');
+    return;
+  }
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = lang === 'ru' ? 'ru-RU' : lang === 'uz' ? 'uz-UZ' : 'en-US';
   speechSynthesis.speak(utter);
@@ -1053,7 +1141,7 @@ function drawAvatarIdle() {
 // Avatar: Text → Sign Animation
 // ══════════════════════════════════════════════════════════════════════════
 
-function sendToAvatar() {
+async function sendToAvatar() {
   const text = $('avatar-input').value.trim();
   if (!text) { toast('Введите текст', 'info'); return; }
 
@@ -1061,23 +1149,30 @@ function sendToAvatar() {
     state.wsAvatar.send(JSON.stringify({ text, lang: state.avatarLang }));
     $('avatar-status').textContent = 'Генерация...';
   } else {
-    // Fallback: call REST API
-    fetch(`${CONFIG.API_BASE}/translate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang: state.avatarLang })
-    })
-    .then(r => r.json())
-    .then(data => {
+    $('avatar-status').textContent = 'Генерация...';
+    try {
+      const response = await fetch(`${CONFIG.API_BASE}/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, lang: state.avatarLang })
+      });
+      const data = await readApiResponse(response);
       renderTranslationPlan(data);
       startAvatarAnimation(data.sequence, data.text);
-    })
-    .catch(e => toast('Ошибка: сервер недоступен', 'error'));
+    } catch (error) {
+      console.error('Avatar fallback error:', error);
+      $('avatar-status').textContent = 'Недоступен';
+      toast('Ошибка: сервер недоступен', 'error');
+    }
   }
 }
 
 function handleAvatarResponse(data) {
-  if (data.type !== 'animation') return;
+  if (data?.type === 'error') {
+    toast(data.message || 'Translation service error', 'error');
+    return;
+  }
+  if (data?.type !== 'animation') return;
 
   $('avatar-status').textContent = 'Анимация...';
   $('avatar-idle').style.display = 'none';
@@ -1095,29 +1190,45 @@ function handleAvatarResponse(data) {
 }
 
 function renderTranslationPlan(plan) {
-  const coverage = $('translation-coverage');
-  const meta = $('translation-meta');
-  const glosses = $('gloss-list');
-  const unknown = $('unknown-words');
-  if (!coverage || !meta || !glosses || !unknown) return;
+  const targets = [
+    {
+      coverage: $('translation-coverage'),
+      meta: $('translation-meta'),
+      glosses: $('gloss-list'),
+      unknown: $('unknown-words')
+    },
+    {
+      coverage: $('detect-translation-coverage'),
+      meta: $('detect-translation-meta'),
+      glosses: $('detect-gloss-list'),
+      unknown: $('detect-unknown-words')
+    }
+  ].filter(target => target.coverage && target.meta && target.glosses && target.unknown);
+
+  if (!targets.length) return;
 
   const languageNames = { en: 'English', ru: 'Русский', uz: 'O‘zbek' };
   const percentage = Number.isFinite(plan.coverage) ? plan.coverage : 0;
-  coverage.textContent = `${percentage}% словаря`;
-  meta.textContent = `Язык: ${languageNames[plan.language] || plan.language || '—'} · Глоссы — порядок жестов для аватара`;
-  glosses.replaceChildren();
-  (plan.glosses || []).forEach(gloss => {
-    const token = document.createElement('span');
-    token.className = 'gloss-token';
-    token.textContent = gloss;
-    glosses.appendChild(token);
-  });
   const missing = plan.unknown_words || [];
   const dropped = plan.dropped_words || [];
   const notices = [];
   if (missing.length) notices.push(`По буквам: ${missing.join(', ')}. Добавьте эти слова в словарь после проверки жеста.`);
   if (dropped.length) notices.push(`Пропущены служебные слова: ${dropped.join(', ')}.`);
-  unknown.textContent = notices.length ? notices.join(' ') : 'Все слова найдены в текущем словаре.';
+  const metaText = `Язык: ${languageNames[plan.language] || plan.language || '-'} · Глоссы - порядок жестов для аватара`;
+  const unknownText = notices.length ? notices.join(' ') : 'Все слова найдены в текущем словаре.';
+
+  targets.forEach(({ coverage, meta, glosses, unknown }) => {
+    coverage.textContent = `${percentage}% словаря`;
+    meta.textContent = metaText;
+    glosses.replaceChildren();
+    (plan.glosses || []).forEach(gloss => {
+      const token = document.createElement('span');
+      token.className = 'gloss-token';
+      token.textContent = gloss;
+      glosses.appendChild(token);
+    });
+    unknown.textContent = unknownText;
+  });
 }
 
 function startAvatarAnimation(sequence, text) {
@@ -1186,20 +1297,32 @@ function animateNextSign() {
 }
 
 function renderSequenceChips(sequence) {
-  const container = $('seq-chips');
-  if (!sequence || sequence.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
-  container.innerHTML = sequence.map((s, i) =>
-    `<div class="seq-chip" id="seq-chip-${i}" title="${s.label}">${s.gesture}</div>`
-  ).join('');
+  const containers = [$('seq-chips'), $('detect-seq-chips')].filter(Boolean);
+  if (!containers.length) return;
+
+  containers.forEach(container => {
+    container.replaceChildren();
+    (sequence || []).forEach(sign => {
+      const chip = document.createElement('div');
+      chip.className = 'seq-chip';
+      chip.title = sign.label || sign.gesture || '';
+      chip.textContent = sign.gesture || '-';
+      container.appendChild(chip);
+    });
+  });
+}
+
+function scheduleAvatarReconnect() {
+  clearTimeout(state.avatarReconnectTimer);
+  state.avatarReconnectTimer = setTimeout(connectAvatarWS, CONFIG.RECONNECT_DELAY * 2);
 }
 
 function updateSeqChips(activeIndex) {
-  document.querySelectorAll('.seq-chip').forEach((chip, i) => {
-    chip.className = 'seq-chip' +
-      (i === activeIndex ? ' active' : i < activeIndex ? ' done' : '');
+  document.querySelectorAll('.seq-chips').forEach(container => {
+    container.querySelectorAll('.seq-chip').forEach((chip, i) => {
+      chip.className = 'seq-chip' +
+        (i === activeIndex ? ' active' : i < activeIndex ? ' done' : '');
+    });
   });
 }
 
@@ -1234,10 +1357,66 @@ function setPhrase(text) {
 }
 
 function switchTab(tabName) {
-  document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  $(`tab-${tabName}`).classList.add('active');
-  document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+  const nextPanel = $(`tab-${tabName}`);
+  const nextButton = document.querySelector(`[data-tab="${tabName}"]`);
+  if (!nextPanel || !nextButton) return;
+
+  document.querySelectorAll('.tab-section').forEach(section => {
+    section.classList.remove('active');
+    section.setAttribute('aria-hidden', 'true');
+  });
+  document.querySelectorAll('.nav-btn').forEach(button => {
+    button.classList.remove('active');
+    button.setAttribute('aria-selected', 'false');
+  });
+  nextPanel.classList.add('active');
+  nextPanel.setAttribute('aria-hidden', 'false');
+  nextButton.classList.add('active');
+  nextButton.setAttribute('aria-selected', 'true');
+  state.activeTab = tabName;
+
+  if (tabName === 'detect' && state.cameraRunning && !document.hidden && !state.frameTimer) {
+    state.frameTimer = setInterval(captureAndSendFrame, CONFIG.FRAME_INTERVAL);
+  } else if (tabName !== 'detect') {
+    clearInterval(state.frameTimer);
+    state.frameTimer = null;
+  }
+}
+
+function initializeTabs() {
+  const tabs = Array.from(document.querySelectorAll('.nav-btn[data-tab]'));
+  tabs.forEach(tab => {
+    tab.addEventListener('keydown', event => {
+      const currentIndex = tabs.indexOf(tab);
+      let targetIndex = currentIndex;
+
+      if (event.key === 'ArrowRight') targetIndex = (currentIndex + 1) % tabs.length;
+      else if (event.key === 'ArrowLeft') targetIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      else if (event.key === 'Home') targetIndex = 0;
+      else if (event.key === 'End') targetIndex = tabs.length - 1;
+      else return;
+
+      event.preventDefault();
+      const target = tabs[targetIndex];
+      target.focus();
+      switchTab(target.dataset.tab);
+    });
+  });
+}
+
+async function readApiResponse(response) {
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // The HTTP status below still creates a useful browser-side error.
+  }
+
+  if (!response.ok) {
+    const message = payload?.detail || payload?.message || `Request failed (${response.status}).`;
+    throw new Error(message);
+  }
+  return payload || {};
 }
 
 // ── Toast notifications ──────────────────────────────────────────────
