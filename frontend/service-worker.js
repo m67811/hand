@@ -1,9 +1,9 @@
-const CACHE_NAME = 'signbridge-v3';
+const CACHE_NAME = 'signbridge-v5';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/style.css',
-  '/app.js',
+  '/app.js?v=5',
   '/avatar3d.js',
   '/manifest.webmanifest',
   '/icon.svg',

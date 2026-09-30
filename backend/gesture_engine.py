@@ -312,7 +312,7 @@ class GestureEngine:
 
         return 'UNKNOWN', 0.30
 
-    def process_frame(self, frame: np.ndarray) -> dict:
+    def process_frame(self, frame: np.ndarray, include_annotated_frame: bool = False) -> dict:
         """
         Process a single BGR frame.
         Returns dict with: gesture, confidence, type, translation, word,
@@ -324,8 +324,9 @@ class GestureEngine:
             'type': 'none',
             'translation': '',
             'word': ''.join(self.word_buffer),
-            'annotated_frame': frame.copy(),
-            'landmarks_detected': False
+            'annotated_frame': frame.copy() if include_annotated_frame else None,
+            'landmarks_detected': False,
+            'hand_landmarks': [],
         }
 
         # Use HandLandmarker if available
@@ -338,11 +339,15 @@ class GestureEngine:
                 if detection_result.hand_landmarks:
                     result['landmarks_detected'] = True
                     hand_lms = detection_result.hand_landmarks[0]  # primary hand
+                    result['hand_landmarks'] = [
+                        [[round(point.x, 4), round(point.y, 4)] for point in hand]
+                        for hand in detection_result.hand_landmarks
+                    ]
 
-                    # Draw landmarks
-                    result['annotated_frame'] = self.draw_landmarks_on_frame(
-                        frame, detection_result.hand_landmarks
-                    )
+                    if include_annotated_frame:
+                        result['annotated_frame'] = self.draw_landmarks_on_frame(
+                            frame, detection_result.hand_landmarks
+                        )
 
                     # Extract numpy array
                     lm_array = self.extract_landmarks_array(hand_lms)
@@ -375,12 +380,17 @@ class GestureEngine:
                 print(f"[Engine] Detection error: {e}")
         else:
             # OpenCV-only mode: detect skin regions (fallback)
-            result = self._opencv_fallback(frame, result)
+            result = self._opencv_fallback(frame, result, include_annotated_frame)
 
         result['word'] = ''.join(self.word_buffer)
         return result
 
-    def _opencv_fallback(self, frame: np.ndarray, result: dict) -> dict:
+    def _opencv_fallback(
+            self,
+            frame: np.ndarray,
+            result: dict,
+            include_annotated_frame: bool = False,
+    ) -> dict:
         """OpenCV skin detection fallback when MediaPipe model is unavailable."""
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         # Skin color range in HSV
@@ -395,7 +405,7 @@ class GestureEngine:
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        annotated = frame.copy()
+        annotated = frame.copy() if include_annotated_frame else None
         if contours:
             largest = max(contours, key=cv2.contourArea)
             area = cv2.contourArea(largest)
@@ -403,8 +413,9 @@ class GestureEngine:
             if area > 5000:  # Hand detected
                 result['landmarks_detected'] = True
                 hull = cv2.convexHull(largest)
-                cv2.drawContours(annotated, [hull], -1, (0, 220, 255), 2)
-                cv2.drawContours(annotated, [largest], -1, (255, 100, 0), 2)
+                if annotated is not None:
+                    cv2.drawContours(annotated, [hull], -1, (0, 220, 255), 2)
+                    cv2.drawContours(annotated, [largest], -1, (255, 100, 0), 2)
 
                 # Count fingers via convexity defects
                 fingers = self._count_fingers(largest)

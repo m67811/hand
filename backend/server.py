@@ -295,6 +295,7 @@ async def gesture_websocket(websocket: WebSocket) -> None:
             if not isinstance(encoded_frame, str):
                 await _send_ws_error(websocket, "missing_frame", "A base64 JPEG frame is required.")
                 continue
+            include_annotated_frame = bool(message.get("annotate", False))
             if not throttle.allow():
                 continue
 
@@ -306,8 +307,17 @@ async def gesture_websocket(websocket: WebSocket) -> None:
 
             try:
                 async with app.state.engine_lock:
-                    result = await asyncio.to_thread(_get_engine().process_frame, frame)
-                annotated_frame = await asyncio.to_thread(_encode_annotated_frame, result["annotated_frame"])
+                    result = await asyncio.to_thread(
+                        _get_engine().process_frame,
+                        frame,
+                        include_annotated_frame,
+                    )
+                annotated_frame = None
+                if include_annotated_frame:
+                    annotated_frame = await asyncio.to_thread(
+                        _encode_annotated_frame,
+                        result["annotated_frame"],
+                    )
             except Exception:
                 logger.exception("Gesture frame processing failed")
                 await _send_ws_error(websocket, "processing_error", "Frame processing failed.")
@@ -322,6 +332,7 @@ async def gesture_websocket(websocket: WebSocket) -> None:
                     "translation": result["translation"],
                     "word": result["word"],
                     "landmarks": result["landmarks_detected"],
+                    "hand_landmarks": result["hand_landmarks"],
                     "annotated_frame": annotated_frame,
                     "timestamp": time.time(),
                 }
@@ -386,6 +397,10 @@ async def avatar_websocket(websocket: WebSocket) -> None:
         app.state.avatar_connections.discard(websocket)
         logger.info("Avatar websocket disconnected. total=%s", len(app.state.avatar_connections))
 
+
+# The browser-side hand tracker loads the same local model as the backend.
+if MODELS_DIR.is_dir():
+    app.mount("/models", StaticFiles(directory=MODELS_DIR), name="models")
 
 # This mount must be declared after API and websocket routes so the frontend can
 # be served from the same origin without shadowing /docs or /api/v1 routes.

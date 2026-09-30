@@ -16,8 +16,11 @@ const CONFIG = {
   API_BASE:   `${serverOrigin}/api/v1`,
   FRAME_INTERVAL: 80,     // ms between frames sent to server (≈12 fps)
   RECONNECT_DELAY: 2000,  // ms before reconnect attempt
-  MAX_CAPTURE_WIDTH: 960,
-  MAX_CAPTURE_HEIGHT: 720,
+  MAX_CAPTURE_WIDTH: 640,
+  MAX_CAPTURE_HEIGHT: 480,
+  CLIENT_TRACKER_INTERVAL: 66,
+  MEDIAPIPE_VISION_MODULE: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs',
+  MEDIAPIPE_VISION_WASM: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm',
 };
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -26,7 +29,15 @@ const state = {
   stream: null,
   cameraRunning: false,
   frameTimer: null,
+  frameTimeout: null,
   frameInFlight: false,
+  captureCanvas: null,
+  handLandmarker: null,
+  handTrackerLoading: false,
+  handTrackerActive: false,
+  handTrackerFrame: null,
+  handTrackerLastTime: 0,
+  handTrackerLastVideoTime: -1,
   activeTab: 'detect',
   isClosing: false,
 
@@ -73,6 +84,9 @@ window.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('beforeunload', () => {
   state.isClosing = true;
   clearInterval(state.frameTimer);
+  clearTimeout(state.frameTimeout);
+  cancelAnimationFrame(state.handTrackerFrame);
+  state.handLandmarker?.close();
   clearTimeout(state.reconnectTimer);
   clearTimeout(state.avatarReconnectTimer);
   if (state.stream) state.stream.getTracks().forEach(track => track.stop());
@@ -129,12 +143,16 @@ function connectGestureWS() {
 
     state.wsGesture.onclose = () => {
       console.log('[WS] Gesture disconnected');
+      clearTimeout(state.frameTimeout);
+      state.frameInFlight = false;
       setConnected(false);
       if (!state.isClosing) scheduleReconnect();
     };
 
     state.wsGesture.onerror = (e) => {
       console.error('[WS] Gesture error', e);
+      clearTimeout(state.frameTimeout);
+      state.frameInFlight = false;
       setConnected(false);
     };
   } catch (e) {
@@ -216,6 +234,7 @@ async function startCamera() {
     $('btn-speak-gesture').disabled = false;
 
     state.cameraRunning = true;
+    void startClientHandTracking();
 
     // Set canvas size to match video
     video.onloadedmetadata = () => {
@@ -242,8 +261,15 @@ function stopCamera() {
   }
 
   clearInterval(state.frameTimer);
+  clearTimeout(state.frameTimeout);
+  stopClientHandTracking();
   state.frameTimer = null;
+  state.frameTimeout = null;
   state.frameInFlight = false;
+  if (canvasOverlay.getContext) {
+    const ctx = canvasOverlay.getContext('2d');
+    ctx?.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+  }
   state.cameraRunning = false;
 
   video.srcObject = null;
@@ -269,7 +295,8 @@ function captureAndSendFrame() {
   if (!state.cameraRunning || state.activeTab !== 'detect' || !state.wsGesture ||
       state.wsGesture.readyState !== WebSocket.OPEN || state.frameInFlight || document.hidden) return;
 
-  const canvas = document.createElement('canvas');
+  const canvas = state.captureCanvas || document.createElement('canvas');
+  state.captureCanvas = canvas;
   const sourceWidth = video.videoWidth || 640;
   const sourceHeight = video.videoHeight || 480;
   const scale = Math.min(1, CONFIG.MAX_CAPTURE_WIDTH / sourceWidth, CONFIG.MAX_CAPTURE_HEIGHT / sourceHeight);
@@ -278,8 +305,13 @@ function captureAndSendFrame() {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  ctx.drawImage(video, 0, 0);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   state.frameInFlight = true;
+  clearTimeout(state.frameTimeout);
+  state.frameTimeout = setTimeout(() => {
+    state.frameInFlight = false;
+    state.frameTimeout = null;
+  }, 2000);
 
   canvas.toBlob(blob => {
     if (!blob) {
@@ -290,9 +322,15 @@ function captureAndSendFrame() {
     reader.onloadend = () => {
       const base64 = typeof reader.result === 'string' ? reader.result.split(',')[1] : null;
       if (base64 && state.wsGesture?.readyState === WebSocket.OPEN) {
-        state.wsGesture.send(JSON.stringify({ type: 'frame', frame: base64 }));
+        try {
+          state.wsGesture.send(JSON.stringify({ type: 'frame', frame: base64, annotate: false }));
+        } catch (error) {
+          console.error('Frame send failed:', error);
+          state.frameInFlight = false;
+        }
+      } else {
+        state.frameInFlight = false;
       }
-      state.frameInFlight = false;
     };
     reader.onerror = () => { state.frameInFlight = false; };
     reader.readAsDataURL(blob);
@@ -305,18 +343,32 @@ function captureAndSendFrame() {
 
 function handleGestureResult(data) {
   if (!data || data.type === 'pong') return;
+  clearTimeout(state.frameTimeout);
+  state.frameTimeout = null;
+  state.frameInFlight = false;
   if (data.type === 'error') {
     toast(data.message || 'Gesture processing error', 'error');
     return;
   }
 
-  const { gesture, confidence, gesture_type, type: messageType, translation, word, annotated_frame } = data;
+  const {
+    gesture,
+    confidence,
+    gesture_type,
+    type: messageType,
+    translation,
+    word,
+    hand_landmarks: handLandmarks,
+    annotated_frame: annotatedFrame,
+  } = data;
   const type = gesture_type || (messageType === 'gesture_result' ? 'none' : messageType);
   const confidenceValue = Number.isFinite(confidence) ? confidence : 0;
 
   // Draw annotated frame on overlay canvas
-  if (annotated_frame) {
-    drawAnnotatedFrame(annotated_frame);
+  if (!state.handTrackerActive && Array.isArray(handLandmarks)) {
+    drawHandLandmarks(handLandmarks);
+  } else if (!state.handTrackerActive && annotatedFrame) {
+    drawAnnotatedFrame(annotatedFrame);
   }
 
   // Update gesture display
@@ -363,6 +415,122 @@ function handleGestureResult(data) {
   if (word !== undefined) {
     $('word-display').textContent = word || '';
   }
+}
+
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [17, 18], [18, 19], [19, 20],
+  [0, 17],
+];
+
+async function startClientHandTracking() {
+  if (state.handTrackerActive) {
+    scheduleClientHandTracking();
+    return;
+  }
+  if (state.handTrackerLoading) return;
+  if (state.handLandmarker) {
+    state.handTrackerActive = true;
+    scheduleClientHandTracking();
+    return;
+  }
+
+  state.handTrackerLoading = true;
+  try {
+    const { FilesetResolver, HandLandmarker } = await import(CONFIG.MEDIAPIPE_VISION_MODULE);
+    const vision = await FilesetResolver.forVisionTasks(CONFIG.MEDIAPIPE_VISION_WASM);
+    state.handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: `${serverOrigin}/models/hand_landmarker.task` },
+      runningMode: 'VIDEO',
+      numHands: 1,
+      minHandDetectionConfidence: 0.5,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    state.handTrackerActive = true;
+    scheduleClientHandTracking();
+  } catch (error) {
+    console.warn('Client hand tracking is unavailable; using server overlay.', error);
+  } finally {
+    state.handTrackerLoading = false;
+  }
+}
+
+function stopClientHandTracking() {
+  cancelAnimationFrame(state.handTrackerFrame);
+  state.handTrackerFrame = null;
+  state.handTrackerActive = false;
+  state.handTrackerLastVideoTime = -1;
+}
+
+function scheduleClientHandTracking() {
+  if (!state.handTrackerActive || !state.cameraRunning || state.handTrackerFrame !== null) return;
+  state.handTrackerFrame = requestAnimationFrame(trackHandInCurrentVideoFrame);
+}
+
+function trackHandInCurrentVideoFrame(timestamp) {
+  state.handTrackerFrame = null;
+  if (!state.handTrackerActive || !state.cameraRunning || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+
+  if (timestamp - state.handTrackerLastTime >= CONFIG.CLIENT_TRACKER_INTERVAL &&
+      video.currentTime !== state.handTrackerLastVideoTime) {
+    try {
+      const result = state.handLandmarker.detectForVideo(video, timestamp);
+      state.handTrackerLastTime = timestamp;
+      state.handTrackerLastVideoTime = video.currentTime;
+      drawHandLandmarks(result.landmarks || []);
+    } catch (error) {
+      console.warn('Client hand tracking failed; using server overlay.', error);
+      state.handTrackerActive = false;
+    }
+  }
+  scheduleClientHandTracking();
+}
+
+function drawHandLandmarks(hands) {
+  const ctx = canvasOverlay.getContext('2d');
+  if (!ctx) return;
+
+  const width = canvasOverlay.width;
+  const height = canvasOverlay.height;
+  ctx.clearRect(0, 0, width, height);
+  if (!hands.length) return;
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#00dcff';
+  ctx.fillStyle = '#9d5cff';
+  ctx.lineWidth = Math.max(2, width / 360);
+
+  hands.forEach(hand => {
+    if (!Array.isArray(hand) || hand.length < 21) return;
+    const points = hand.map(point => {
+      const x = Array.isArray(point) ? point[0] : point?.x;
+      const y = Array.isArray(point) ? point[1] : point?.y;
+      return Number.isFinite(x) && Number.isFinite(y) ? [(1 - x) * width, y * height] : null;
+    });
+
+    ctx.beginPath();
+    HAND_CONNECTIONS.forEach(([from, to]) => {
+      const start = points[from];
+      const end = points[to];
+      if (!start || !end) return;
+      ctx.moveTo(start[0], start[1]);
+      ctx.lineTo(end[0], end[1]);
+    });
+    ctx.stroke();
+
+    points.forEach(point => {
+      if (!point) return;
+      const [x, y] = point;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(3, width / 180), 0, Math.PI * 2);
+      ctx.fill();
+    });
+  });
 }
 
 function drawAnnotatedFrame(base64) {
